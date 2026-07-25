@@ -53,3 +53,14 @@ CREATE TABLE IF NOT EXISTS UNIT_RATE (
     FOREIGN KEY (agreement_id) REFERENCES AGREEMENT(id),
     UNIQUE (agreement_id, valid_from, payment_method)
 );
+
+CREATE TABLE IF NOT EXISTS DAY_AND_NIGHT_TARIFF (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tariff_code VARCHAR(255) NOT NULL UNIQUE,
+    night_rate_valid_from TIME NOT NULL,
+    day_rate_valid_from TIME NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_agreement_tariff_code ON AGREEMENT(tariff_code);
+CREATE INDEX IF NOT EXISTS idx_day_and_night_tariff_tariff_code ON DAY_AND_NIGHT_TARIFF(tariff_code);
