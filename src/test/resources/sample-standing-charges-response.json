@@ -1,0 +1,161 @@
+{
+  "count": 22,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "value_exc_vat": 48.2442,
+      "value_inc_vat": 50.65641,
+      "valid_from": "2026-06-30T23:00:00Z",
+      "valid_to": null,
+      "payment_method": "DIRECT_DEBIT"
+    },
+    {
+      "value_exc_vat": 56.4891,
+      "value_inc_vat": 59.313555,
+      "valid_from": "2026-06-30T23:00:00Z",
+      "valid_to": null,
+      "payment_method": "NON_DIRECT_DEBIT"
+    },
+    {
+      "value_exc_vat": 45.6925,
+      "value_inc_vat": 47.977125,
+      "valid_from": "2026-03-31T23:00:00Z",
+      "valid_to": "2026-06-30T23:00:00Z",
+      "payment_method": "DIRECT_DEBIT"
+    },
+    {
+      "value_exc_vat": 51.9547,
+      "value_inc_vat": 54.552435,
+      "valid_from": "2026-03-31T23:00:00Z",
+      "valid_to": "2026-06-30T23:00:00Z",
+      "payment_method": "NON_DIRECT_DEBIT"
+    },
+    {
+      "value_exc_vat": 51.9547,
+      "value_inc_vat": 54.552435,
+      "valid_from": "2026-01-01T00:00:00Z",
+      "valid_to": "2026-03-31T23:00:00Z",
+      "payment_method": "NON_DIRECT_DEBIT"
+    },
+    {
+      "value_exc_vat": 45.6925,
+      "value_inc_vat": 47.977125,
+      "valid_from": "2026-01-01T00:00:00Z",
+      "valid_to": "2026-03-31T23:00:00Z",
+      "payment_method": "DIRECT_DEBIT"
+    },
+    {
+      "value_exc_vat": 45.0402,
+      "value_inc_vat": 47.29221,
+      "valid_from": "2025-09-30T23:00:00Z",
+      "valid_to": "2026-01-01T00:00:00Z",
+      "payment_method": "DIRECT_DEBIT"
+    },
+    {
+      "value_exc_vat": 51.0402,
+      "value_inc_vat": 53.59221,
+      "valid_from": "2025-09-30T23:00:00Z",
+      "valid_to": "2026-01-01T00:00:00Z",
+      "payment_method": "NON_DIRECT_DEBIT"
+    },
+    {
+      "value_exc_vat": 42.8347,
+      "value_inc_vat": 44.976435,
+      "valid_from": "2025-06-30T23:00:00Z",
+      "valid_to": "2025-09-30T23:00:00Z",
+      "payment_method": "DIRECT_DEBIT"
+    },
+    {
+      "value_exc_vat": 48.896,
+      "value_inc_vat": 51.3408,
+      "valid_from": "2025-06-30T23:00:00Z",
+      "valid_to": "2025-09-30T23:00:00Z",
+      "payment_method": "NON_DIRECT_DEBIT"
+    },
+    {
+      "value_exc_vat": 50.2426,
+      "value_inc_vat": 52.75473,
+      "valid_from": "2025-03-31T23:00:00Z",
+      "valid_to": "2025-06-30T23:00:00Z",
+      "payment_method": "NON_DIRECT_DEBIT"
+    },
+    {
+      "value_exc_vat": 45.0241,
+      "value_inc_vat": 47.275305,
+      "valid_from": "2025-03-31T23:00:00Z",
+      "valid_to": "2025-06-30T23:00:00Z",
+      "payment_method": "DIRECT_DEBIT"
+    },
+    {
+      "value_exc_vat": 51.6834,
+      "value_inc_vat": 54.26757,
+      "valid_from": "2024-09-30T23:00:00Z",
+      "valid_to": "2025-03-31T23:00:00Z",
+      "payment_method": "NON_DIRECT_DEBIT"
+    },
+    {
+      "value_exc_vat": 46.4649,
+      "value_inc_vat": 48.788145,
+      "valid_from": "2024-09-30T23:00:00Z",
+      "valid_to": "2025-03-31T23:00:00Z",
+      "payment_method": "DIRECT_DEBIT"
+    },
+    {
+      "value_exc_vat": 50.79,
+      "value_inc_vat": 53.3295,
+      "valid_from": "2024-03-31T23:00:00Z",
+      "valid_to": "2024-09-30T23:00:00Z",
+      "payment_method": "NON_DIRECT_DEBIT"
+    },
+    {
+      "value_exc_vat": 45.57,
+      "value_inc_vat": 47.8485,
+      "valid_from": "2024-03-31T23:00:00Z",
+      "valid_to": "2024-09-30T23:00:00Z",
+      "payment_method": "DIRECT_DEBIT"
+    },
+    {
+      "value_exc_vat": 45.23,
+      "value_inc_vat": 47.4915,
+      "valid_from": "2024-01-01T00:00:00Z",
+      "valid_to": "2024-03-31T23:00:00Z",
+      "payment_method": "NON_DIRECT_DEBIT"
+    },
+    {
+      "value_exc_vat": 40.01,
+      "value_inc_vat": 42.0105,
+      "valid_from": "2024-01-01T00:00:00Z",
+      "valid_to": "2024-03-31T23:00:00Z",
+      "payment_method": "DIRECT_DEBIT"
+    },
+    {
+      "value_exc_vat": 40.0125,
+      "value_inc_vat": 42.013125,
+      "valid_from": "2023-03-31T23:00:00Z",
+      "valid_to": "2024-01-01T00:00:00Z",
+      "payment_method": "DIRECT_DEBIT"
+    },
+    {
+      "value_exc_vat": 45.2311,
+      "value_inc_vat": 47.492655,
+      "valid_from": "2023-03-31T23:00:00Z",
+      "valid_to": "2024-01-01T00:00:00Z",
+      "payment_method": "NON_DIRECT_DEBIT"
+    },
+    {
+      "value_exc_vat": 40.6283,
+      "value_inc_vat": 42.659715,
+      "valid_from": "2022-11-01T00:00:00Z",
+      "valid_to": "2023-03-31T23:00:00Z",
+      "payment_method": "NON_DIRECT_DEBIT"
+    },
+    {
+      "value_exc_vat": 35.5166,
+      "value_inc_vat": 37.29243,
+      "valid_from": "2022-11-01T00:00:00Z",
+      "valid_to": "2023-03-31T23:00:00Z",
+      "payment_method": "DIRECT_DEBIT"
+    }
+  ]
+}

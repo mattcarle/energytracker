@@ -1,0 +1,189 @@
+{
+  "number": "A-672C2AC8",
+  "properties": [
+    {
+      "id": 3827001,
+      "moved_in_at": "2021-09-26T00:00:00+01:00",
+      "moved_out_at": null,
+      "address_line_1": "7 BOUNDSTONE ROAD",
+      "address_line_2": "WRECCLESHAM",
+      "address_line_3": "FARNHAM",
+      "town": "SURREY",
+      "county": "",
+      "postcode": "GU10 4TH",
+      "electricity_meter_points": [
+        {
+          "mpan": "2000016292581",
+          "profile_class": 1,
+          "consumption_standard": 9480,
+          "meters": [
+            {
+              "serial_number": "K93C21351",
+              "registers": [
+                {
+                  "identifier": "01",
+                  "rate": "STANDARD",
+                  "is_settlement_register": true
+                }
+              ]
+            },
+            {
+              "serial_number": "17P7359913",
+              "registers": [
+                {
+                  "identifier": "1",
+                  "rate": "STANDARD",
+                  "is_settlement_register": true
+                }
+              ]
+            },
+            {
+              "serial_number": "24J0660499",
+              "registers": [
+                {
+                  "identifier": "1",
+                  "rate": "STANDARD",
+                  "is_settlement_register": true
+                }
+              ]
+            }
+          ],
+          "agreements": [
+            {
+              "tariff_code": "E-1R-AVRO-VAR-21-09-26-H",
+              "valid_from": "2021-09-26T00:00:00+01:00",
+              "valid_to": "2022-03-07T00:00:00Z"
+            },
+            {
+              "tariff_code": "E-1R-GO-21-12-23-H",
+              "valid_from": "2022-03-07T00:00:00Z",
+              "valid_to": "2023-03-07T00:00:00Z"
+            },
+            {
+              "tariff_code": "E-2R-VAR-22-10-01-H",
+              "valid_from": "2023-03-07T00:00:00Z",
+              "valid_to": "2023-03-07T00:00:00Z"
+            },
+            {
+              "tariff_code": "E-1R-INTELLI-VAR-22-10-14-H",
+              "valid_from": "2023-03-07T00:00:00Z",
+              "valid_to": "2024-01-07T00:00:00Z"
+            },
+            {
+              "tariff_code": "E-1R-VAR-22-11-01-H",
+              "valid_from": "2024-01-07T00:00:00Z",
+              "valid_to": "2024-01-09T00:00:00Z"
+            },
+            {
+              "tariff_code": "E-1R-INTELLI-VAR-22-10-14-H",
+              "valid_from": "2024-01-09T00:00:00Z",
+              "valid_to": "2025-01-07T00:00:00Z"
+            },
+            {
+              "tariff_code": "E-1R-VAR-22-11-01-H",
+              "valid_from": "2025-01-07T00:00:00Z",
+              "valid_to": "2025-01-08T00:00:00Z"
+            },
+            {
+              "tariff_code": "E-1R-INTELLI-VAR-22-10-14-H",
+              "valid_from": "2025-01-08T00:00:00Z",
+              "valid_to": "2025-04-10T00:00:00+01:00"
+            },
+            {
+              "tariff_code": "E-1R-INTELLI-FIX-12M-25-04-10-H",
+              "valid_from": "2025-04-10T00:00:00+01:00",
+              "valid_to": "2026-04-10T00:00:00+01:00"
+            },
+            {
+              "tariff_code": "E-1R-INTELLI-FIX-12M-26-02-11-H",
+              "valid_from": "2026-04-10T00:00:00+01:00",
+              "valid_to": "2026-07-07T00:00:00+01:00"
+            },
+            {
+              "tariff_code": "E-1R-IOG-SMB-FIX-12M-26-02-11-H",
+              "valid_from": "2026-07-07T00:00:00+01:00",
+              "valid_to": "2027-04-10T00:00:00+01:00"
+            }
+          ],
+          "is_export": false
+        },
+        {
+          "mpan": "2000060589738",
+          "profile_class": 8,
+          "consumption_standard": 5842,
+          "meters": [
+            {
+              "serial_number": "17P7359913",
+              "registers": [
+                {
+                  "identifier": "1",
+                  "rate": "STANDARD",
+                  "is_settlement_register": true
+                }
+              ]
+            },
+            {
+              "serial_number": "24J0660499",
+              "registers": [
+                {
+                  "identifier": "1",
+                  "rate": "STANDARD",
+                  "is_settlement_register": true
+                }
+              ]
+            }
+          ],
+          "agreements": [
+            {
+              "tariff_code": "E-1R-OUTGOING-FIX-12M-19-05-13-H",
+              "valid_from": "2024-03-31T00:00:00Z",
+              "valid_to": "2025-03-31T00:00:00+01:00"
+            },
+            {
+              "tariff_code": "E-1R-OUTGOING-VAR-24-10-26-H",
+              "valid_from": "2025-03-31T00:00:00+01:00",
+              "valid_to": null
+            }
+          ],
+          "is_export": true
+        }
+      ],
+      "gas_meter_points": [
+        {
+          "mprn": "4038366808",
+          "consumption_standard": 17803,
+          "meters": [
+            {
+              "serial_number": "G4P03288771800"
+            },
+            {
+              "serial_number": "E6E15639472443"
+            }
+          ],
+          "agreements": [
+            {
+              "tariff_code": "G-1R-AVRO-VAR-21-09-26-H",
+              "valid_from": "2021-09-26T00:00:00+01:00",
+              "valid_to": "2023-04-01T00:00:00+01:00"
+            },
+            {
+              "tariff_code": "G-1R-VAR-22-11-01-H",
+              "valid_from": "2023-04-01T00:00:00+01:00",
+              "valid_to": "2024-09-13T00:00:00+01:00"
+            },
+            {
+              "tariff_code": "G-1R-OE-FIX-15M-24-09-06-H",
+              "valid_from": "2024-09-13T00:00:00+01:00",
+              "valid_to": "2025-12-13T00:00:00Z"
+            },
+            {
+              "tariff_code": "G-1R-OE-FIX-12M-25-10-22-H",
+              "valid_from": "2025-12-13T00:00:00Z",
+              "valid_to": "2026-12-13T00:00:00Z"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
