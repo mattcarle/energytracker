@@ -6,7 +6,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "UNIT_RATE", uniqueConstraints = {
-    @UniqueConstraint(columnNames = {"agreement_id", "valid_from"})
+    @UniqueConstraint(columnNames = {"agreement_id", "valid_from", "payment_method", "rate_type"})
 })
 public class UnitRate {
 
@@ -32,6 +32,9 @@ public class UnitRate {
     @Column(name = "payment_method", nullable = true)
     private String paymentMethod;
 
+    @Column(name = "rate_type", nullable = false)
+    private String rateType = "STANDARD";
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -39,7 +42,7 @@ public class UnitRate {
         this.createdAt = LocalDateTime.now();
     }
 
-    public UnitRate(Long agreementId, BigDecimal valueExcVat, BigDecimal valueIncVat, LocalDateTime validFrom, LocalDateTime validTo, String paymentMethod) {
+    public UnitRate(Long agreementId, BigDecimal valueExcVat, BigDecimal valueIncVat, LocalDateTime validFrom, LocalDateTime validTo, String paymentMethod, String rateType) {
         this.agreementId = agreementId;
         this.valueExcVat = valueExcVat;
         this.valueIncVat = valueIncVat;
@@ -47,6 +50,7 @@ public class UnitRate {
         this.validTo = validTo;
         this.createdAt = LocalDateTime.now();
         this.paymentMethod = paymentMethod;
+        this.rateType = rateType;
     }
 
     public Long getId() { return id; }
@@ -72,4 +76,7 @@ public class UnitRate {
 
     public String getPaymentMethod() { return paymentMethod; }
     public void setPaymentMethod(String paymentMethod) { this.paymentMethod = paymentMethod; }
+
+    public String getRateType() { return rateType; }
+    public void setRateType(String rateType) { this.rateType = rateType; }
 }

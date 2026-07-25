@@ -58,6 +58,9 @@ public class OctopusService {
     @Autowired
     private com.carle7.energytracker.repository.MeterAgreementRepository meterAgreementRepository;
 
+    @Autowired
+    private com.carle7.energytracker.repository.DayAndNightTariffRepository dayAndNightTariffRepository;
+
     public String getConsumption() {
         String url = String.format(
                 "%s/electricity-meter-points/%s/meters/%s/consumption/",
@@ -228,9 +231,23 @@ public class OctopusService {
                 var standingCharges = loadStandingCharges(standingChargeResponse, agreement);
                 standingChargeRepository.saveAll(standingCharges);
 
-                var unitRateResponse = loadUnitRates(agreement.getTariffCode(), meterType);
-                var unitRates = loadUnitRates(unitRateResponse, agreement);
-                unitRateRepository.saveAll(unitRates);
+                // Check if this is a day-and-night tariff
+                boolean isDayAndNightTariff = dayAndNightTariffRepository
+                        .findByTariffCode(agreement.getTariffCode())
+                        .isPresent();
+
+                if (isDayAndNightTariff) {
+                    // Load day and night rates from separate endpoints
+                    var dayRates = fetchAllUnitRates(agreement, meterType, "day", "DAY");
+                    unitRateRepository.saveAll(dayRates);
+
+                    var nightRates = fetchAllUnitRates(agreement, meterType, "night", "NIGHT");
+                    unitRateRepository.saveAll(nightRates);
+                } else {
+                    // Load standard rates
+                    var unitRates = fetchAllUnitRates(agreement, meterType, "standard", "STANDARD");
+                    unitRateRepository.saveAll(unitRates);
+                }
             }
         } catch (Exception e) {
             logger.error("Failed to load account details: {}", e.getMessage(), e);
@@ -299,7 +316,7 @@ public class OctopusService {
         return standingCharges;
     }
 
-    private List<com.carle7.energytracker.model.UnitRate> loadUnitRates(UnitRatesResponse ur, Agreement agreementRecord) {
+    private List<com.carle7.energytracker.model.UnitRate> loadUnitRates(UnitRatesResponse ur, Agreement agreementRecord, String rateType) {
         List<com.carle7.energytracker.model.UnitRate> unitRates = new ArrayList<>();
         if (ur != null && ur.results != null) {
             for (UnitRateDto urDto : ur.results) {
@@ -310,7 +327,7 @@ public class OctopusService {
                 String paymentMethod = ofNullable(urDto.payment_method).orElse("NA");
 
                 unitRates.add(new com.carle7.energytracker.model.UnitRate(
-                        agreementRecord.getId(), valueExc, valueInc, urValidFrom, urValidTo, paymentMethod
+                        agreementRecord.getId(), valueExc, valueInc, urValidFrom, urValidTo, paymentMethod, rateType
                 ));
             }
         }
@@ -387,19 +404,25 @@ public class OctopusService {
         }
     }
 
-    private UnitRatesResponse loadUnitRates(String tariffCode, String meterType) {
+    private UnitRatesResponse loadUnitRates(String tariffCode, String meterType, String rateType) {
         String type = switch (meterType) {
             case "GAS" -> "gas";
             case "ELEC" -> "electricity";
             default -> throw new IllegalArgumentException("Invalid meter type: " + meterType);
         };
         String product = computeProductName(tariffCode);
+        String endpoint = switch (rateType) {
+            case "day" -> "day-unit-rates";
+            case "night" -> "night-unit-rates";
+            default -> "standard-unit-rates";
+        };
         String url = String.format(
-                "%s/products/%s/%s-tariffs/%s/standard-unit-rates/",
+                "%s/products/%s/%s-tariffs/%s/%s/",
                 octopusConfig.getBaseUrl(),
                 product,
                 type,
-                tariffCode
+                tariffCode,
+                endpoint
         );
 
         String basicAuth = Base64.getEncoder().encodeToString((octopusConfig.getAuthToken() + ":").getBytes());
@@ -433,6 +456,91 @@ public class OctopusService {
             logger.error("Failed to fetch unit rates from {}: {}", url, e.getMessage(), e);
             return new UnitRatesResponse();
         }
+    }
+
+    private List<com.carle7.energytracker.model.UnitRate> fetchAllUnitRates(Agreement agreement, String meterType, String rateType, String rateTypeLabel) {
+        String type = switch (meterType) {
+            case "GAS" -> "gas";
+            case "ELEC" -> "electricity";
+            default -> throw new IllegalArgumentException("Invalid meter type: " + meterType);
+        };
+        String product = computeProductName(agreement.getTariffCode());
+        String endpoint = switch (rateType) {
+            case "day" -> "day-unit-rates";
+            case "night" -> "night-unit-rates";
+            default -> "standard-unit-rates";
+        };
+
+        // Build period parameters
+        String periodFrom = agreement.getValidFrom().atOffset(java.time.ZoneOffset.UTC).toString();
+
+        // Omit period_to if it equals period_from or is null
+        boolean includePeriodTo = agreement.getValidTo() != null
+                && !agreement.getValidTo().equals(agreement.getValidFrom());
+
+        String initialUrl;
+        if (includePeriodTo) {
+            String periodTo = agreement.getValidTo().atOffset(java.time.ZoneOffset.UTC).toString();
+            initialUrl = String.format(
+                    "%s/products/%s/%s-tariffs/%s/%s/?period_from=%s&period_to=%s&page_size=1500",
+                    octopusConfig.getBaseUrl(),
+                    product,
+                    type,
+                    agreement.getTariffCode(),
+                    endpoint,
+                    periodFrom,
+                    periodTo
+            );
+        } else {
+            initialUrl = String.format(
+                    "%s/products/%s/%s-tariffs/%s/%s/?period_from=%s&page_size=1500",
+                    octopusConfig.getBaseUrl(),
+                    product,
+                    type,
+                    agreement.getTariffCode(),
+                    endpoint,
+                    periodFrom
+            );
+        }
+
+        List<com.carle7.energytracker.model.UnitRate> allUnitRates = new ArrayList<>();
+        String nextUrl = initialUrl;
+
+        String basicAuth = Base64.getEncoder().encodeToString((octopusConfig.getAuthToken() + ":").getBytes());
+        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+        headers.set("Authorization", "Basic " + basicAuth);
+        org.springframework.http.HttpEntity<String> entity = new org.springframework.http.HttpEntity<>(headers);
+
+        while (nextUrl != null) {
+            try {
+                long startTime = System.currentTimeMillis();
+                org.springframework.http.ResponseEntity<String> response = restTemplate.exchange(
+                        nextUrl,
+                        org.springframework.http.HttpMethod.GET,
+                        entity,
+                        String.class
+                );
+                long durationMs = System.currentTimeMillis() - startTime;
+                logger.info("GET {} completed in {} ms", nextUrl, durationMs);
+
+                if (!response.getStatusCode().is2xxSuccessful()) {
+                    logger.error("API error from {}: {} {}", nextUrl, response.getStatusCode(), response.getBody());
+                    break;
+                }
+
+                UnitRatesResponse unitRatesResponse = objectMapper.readValue(response.getBody(), UnitRatesResponse.class);
+                var unitRates = loadUnitRates(unitRatesResponse, agreement, rateTypeLabel);
+                allUnitRates.addAll(unitRates);
+
+                nextUrl = unitRatesResponse.next;
+            } catch (Exception e) {
+                logger.error("Failed to fetch unit rates from {}: {}", nextUrl, e.getMessage(), e);
+                break;
+            }
+        }
+
+        logger.info("Fetched {} {} unit rates for tariff {}", allUnitRates.size(), rateTypeLabel, agreement.getTariffCode());
+        return allUnitRates;
     }
 
     public void refreshData() {

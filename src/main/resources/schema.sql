@@ -57,9 +57,10 @@ CREATE TABLE IF NOT EXISTS UNIT_RATE (
     valid_from TIMESTAMP NOT NULL,
     valid_to TIMESTAMP,
     payment_method VARCHAR(50) NULL CHECK(payment_method IN ('DIRECT_DEBIT', 'NON_DIRECT_DEBIT', 'NA')),
+    rate_type VARCHAR(20) NOT NULL DEFAULT 'STANDARD' CHECK(rate_type IN ('STANDARD', 'DAY', 'NIGHT')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (agreement_id) REFERENCES AGREEMENT(id),
-    UNIQUE (agreement_id, valid_from, payment_method)
+    UNIQUE (agreement_id, valid_from, payment_method, rate_type)
 );
 
 CREATE TABLE IF NOT EXISTS DAY_AND_NIGHT_TARIFF (
