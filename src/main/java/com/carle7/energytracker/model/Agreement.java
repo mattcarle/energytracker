@@ -5,7 +5,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "AGREEMENT", uniqueConstraints = {
-    @UniqueConstraint(columnNames = {"meter_id", "tariff_code", "valid_from"})
+    @UniqueConstraint(columnNames = {"tariff_code", "valid_from"})
 })
 public class Agreement {
 
@@ -22,9 +22,6 @@ public class Agreement {
     @Column(name = "valid_to")
     private LocalDateTime validTo;
 
-    @Column(name = "meter_id", nullable = false)
-    private Long meterId;
-
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -32,11 +29,10 @@ public class Agreement {
         this.createdAt = LocalDateTime.now();
     }
 
-    public Agreement(String tariffCode, LocalDateTime validFrom, LocalDateTime validTo, Long meterId) {
+    public Agreement(String tariffCode, LocalDateTime validFrom, LocalDateTime validTo) {
         this.tariffCode = tariffCode;
         this.validFrom = validFrom;
         this.validTo = validTo;
-        this.meterId = meterId;
         this.createdAt = LocalDateTime.now();
     }
 
@@ -70,14 +66,6 @@ public class Agreement {
 
     public void setValidTo(LocalDateTime validTo) {
         this.validTo = validTo;
-    }
-
-    public Long getMeterId() {
-        return meterId;
-    }
-
-    public void setMeterId(Long meterId) {
-        this.meterId = meterId;
     }
 
     public LocalDateTime getCreatedAt() {

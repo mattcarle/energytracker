@@ -13,10 +13,18 @@ CREATE TABLE IF NOT EXISTS AGREEMENT (
     tariff_code VARCHAR(255) NOT NULL,
     valid_from TIMESTAMP NOT NULL,
     valid_to TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (tariff_code, valid_from)
+);
+
+CREATE TABLE IF NOT EXISTS METER_AGREEMENT (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
     meter_id BIGINT NOT NULL,
+    agreement_id BIGINT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (meter_id) REFERENCES METER(id),
-    UNIQUE (meter_id, tariff_code, valid_from)
+    FOREIGN KEY (agreement_id) REFERENCES AGREEMENT(id),
+    UNIQUE (meter_id, agreement_id)
 );
 
 CREATE TABLE IF NOT EXISTS USAGE (
