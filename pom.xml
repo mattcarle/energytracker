@@ -75,6 +75,16 @@
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<!-- All persisted timestamps are UTC-intended naive LocalDateTimes; running tests
+					     under a non-UTC JVM default zone (e.g. Europe/London) can hit DST-transition
+					     edge cases in JDBC timestamp handling. -->
+					<argLine>-Duser.timezone=UTC</argLine>
+				</configuration>
+			</plugin>
 		</plugins>
 	</build>
 

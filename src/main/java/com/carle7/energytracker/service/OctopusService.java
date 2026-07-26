@@ -2,11 +2,17 @@ package com.carle7.energytracker.service;
 
 import com.carle7.energytracker.config.OctopusConfig;
 import com.carle7.energytracker.model.Agreement;
+import com.carle7.energytracker.model.DayAndNightTariff;
 import com.carle7.energytracker.model.Meter;
+import com.carle7.energytracker.model.MeterPoint;
 import com.carle7.energytracker.model.StandingCharge;
+import com.carle7.energytracker.model.UnitRate;
+import com.carle7.energytracker.model.UnitRateByHalfHour;
 import com.carle7.energytracker.model.Usage;
 import com.carle7.energytracker.repository.AgreementRepository;
+import com.carle7.energytracker.repository.MeterPointRepository;
 import com.carle7.energytracker.repository.MeterRepository;
+import com.carle7.energytracker.repository.UnitRateByHalfHourRepository;
 import com.carle7.energytracker.repository.UsageRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,10 +25,16 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 import static java.util.Optional.ofNullable;
 
@@ -56,10 +68,15 @@ public class OctopusService {
     private com.carle7.energytracker.repository.UnitRateRepository unitRateRepository;
 
     @Autowired
-    private com.carle7.energytracker.repository.MeterAgreementRepository meterAgreementRepository;
+    private MeterPointRepository meterPointRepository;
 
     @Autowired
     private com.carle7.energytracker.repository.DayAndNightTariffRepository dayAndNightTariffRepository;
+
+    @Autowired
+    private UnitRateByHalfHourRepository unitRateByHalfHourRepository;
+
+    private static final ZoneId LONDON_ZONE = ZoneId.of("Europe/London");
 
     public String getConsumption() {
         String url = String.format(
@@ -142,9 +159,9 @@ public class OctopusService {
             // Clear existing data before reloading from Octopus API. Order matters because of FK constraints.
             unitRateRepository.deleteAllInBatch();
             standingChargeRepository.deleteAllInBatch();
-            meterAgreementRepository.deleteAllInBatch();
             agreementRepository.deleteAllInBatch();
             meterRepository.deleteAllInBatch();
+            meterPointRepository.deleteAllInBatch();
 
             String jsonResponse = getAccountDetails();
             if (jsonResponse == null) {
@@ -158,74 +175,69 @@ public class OctopusService {
                 return;
             }
 
-            // Collect all meters from all properties
-            List<MeterWithAgreements> metersWithAgreements = new ArrayList<>();
+            // Collect all meter points from all properties
+            List<MeterPointData> meterPointsData = new ArrayList<>();
             for (PropertyDto property : accountResponse.properties) {
-                collectMetersFromProperty(property, metersWithAgreements);
+                collectMeterPointsFromProperty(property, meterPointsData);
             }
 
-            // Save all meters
-            List<Meter> meters = metersWithAgreements.stream()
-                    .map(MeterWithAgreements::meter)
+            // Save all meter points
+            List<MeterPoint> meterPoints = meterPointsData.stream()
+                    .map(MeterPointData::meterPoint)
                     .toList();
             long startTime = System.currentTimeMillis();
-            List<Meter> savedMeters = meterRepository.saveAll(meters);
+            List<MeterPoint> savedMeterPoints = meterPointRepository.saveAll(meterPoints);
             long durationMs = System.currentTimeMillis() - startTime;
-            logger.info("Saved {} meter records in {} ms", savedMeters.size(), durationMs);
+            logger.info("Saved {} meter point records in {} ms", savedMeterPoints.size(), durationMs);
 
-            // Update metersWithAgreements with saved meter IDs
-            for (int i = 0; i < savedMeters.size(); i++) {
-                metersWithAgreements.get(i).meter().setId(savedMeters.get(i).getId());
+            // Update meterPointsData with saved meter point IDs
+            for (int i = 0; i < savedMeterPoints.size(); i++) {
+                meterPointsData.get(i).meterPoint().setId(savedMeterPoints.get(i).getId());
             }
 
-            // Collect unique agreements and save them
-            var uniqueAgreements = metersWithAgreements.stream()
-                    .flatMap(m -> m.agreementDtos().stream())
-                    .distinct()
-                    .toList();
+            // Save meters, one per physical meter on each meter point
+            List<Meter> meters = new ArrayList<>();
+            for (MeterPointData mpd : meterPointsData) {
+                for (MeterDetailDto meterDto : mpd.meterDtos()) {
+                    meters.add(new Meter(meterDto.serial_number, mpd.meterPoint().getId()));
+                }
+            }
+            startTime = System.currentTimeMillis();
+            List<Meter> savedMeters = meterRepository.saveAll(meters);
+            durationMs = System.currentTimeMillis() - startTime;
+            logger.info("Saved {} meter records in {} ms", savedMeters.size(), durationMs);
 
-            List<Agreement> agreements = uniqueAgreements.stream()
-                    .map(dto -> new Agreement(
+            // Collect agreements per meter point, deduplicating by tariff_code/valid_from within each meter point
+            List<Agreement> agreements = new ArrayList<>();
+            for (MeterPointData mpd : meterPointsData) {
+                var uniqueAgreementDtos = new java.util.LinkedHashMap<String, AgreementDetailDto>();
+                for (AgreementDetailDto dto : mpd.agreementDtos()) {
+                    uniqueAgreementDtos.putIfAbsent(dto.tariff_code + "|" + dto.valid_from, dto);
+                }
+                for (AgreementDetailDto dto : uniqueAgreementDtos.values()) {
+                    agreements.add(new Agreement(
                             dto.tariff_code,
                             parseDateTime(dto.valid_from),
-                            dto.valid_to != null ? parseDateTime(dto.valid_to) : null
-                    ))
-                    .toList();
+                            dto.valid_to != null ? parseDateTime(dto.valid_to) : null,
+                            mpd.meterPoint().getId()
+                    ));
+                }
+            }
 
             startTime = System.currentTimeMillis();
             List<Agreement> savedAgreements = agreementRepository.saveAll(agreements);
             durationMs = System.currentTimeMillis() - startTime;
             logger.info("Saved {} agreement records in {} ms", savedAgreements.size(), durationMs);
 
-            // Build a map from (tariff_code, valid_from) to saved Agreement
-            var agreementMap = new java.util.HashMap<String, Agreement>();
-            for (Agreement a : savedAgreements) {
-                agreementMap.put(a.getTariffCode() + "|" + a.getValidFrom(), a);
+            // Build a map from meter point ID to meter type for standing charge / unit rate lookups
+            var meterTypeByMeterPointId = new java.util.HashMap<Long, String>();
+            for (MeterPointData mpd : meterPointsData) {
+                meterTypeByMeterPointId.put(mpd.meterPoint().getId(), mpd.meterPoint().getMeterType());
             }
-
-            // Create meter-agreement relationships
-            List<com.carle7.energytracker.model.MeterAgreement> meterAgreements = new ArrayList<>();
-            for (MeterWithAgreements mwa : metersWithAgreements) {
-                for (AgreementDetailDto dto : mwa.agreementDtos()) {
-                    String key = dto.tariff_code + "|" + parseDateTime(dto.valid_from);
-                    Agreement agreement = agreementMap.get(key);
-                    if (agreement != null) {
-                        meterAgreements.add(new com.carle7.energytracker.model.MeterAgreement(
-                                mwa.meter().getId(),
-                                agreement.getId()
-                        ));
-                    }
-                }
-            }
-
-            startTime = System.currentTimeMillis();
-            meterAgreementRepository.saveAll(meterAgreements);
-            durationMs = System.currentTimeMillis() - startTime;
-            logger.info("Saved {} meter-agreement records in {} ms", meterAgreements.size(), durationMs);
 
             // Load standing charges and unit rates for each agreement
             for (Agreement agreement : savedAgreements) {
-                String meterType = determineMeterType(agreement, metersWithAgreements);
+                String meterType = meterTypeByMeterPointId.getOrDefault(agreement.getMeterPointId(), "ELEC");
 
                 var standingChargeResponse = loadStandingCharges(agreement.getTariffCode(), meterType);
                 var standingCharges = loadStandingCharges(standingChargeResponse, agreement);
@@ -254,48 +266,34 @@ public class OctopusService {
         }
     }
 
-    private record MeterWithAgreements(Meter meter, List<AgreementDetailDto> agreementDtos, String meterType) {}
+    private record MeterPointData(MeterPoint meterPoint, List<MeterDetailDto> meterDtos, List<AgreementDetailDto> agreementDtos) {}
 
-    private void collectMetersFromProperty(PropertyDto property, List<MeterWithAgreements> result) {
+    private void collectMeterPointsFromProperty(PropertyDto property, List<MeterPointData> result) {
         if (property.electricity_meter_points != null) {
-            for (MeterPointDto meterPoint : property.electricity_meter_points) {
-                collectMetersFromMeterPoint(meterPoint, "ELEC", result);
+            for (MeterPointDto meterPointDto : property.electricity_meter_points) {
+                collectMeterPointData(meterPointDto, "ELEC", result);
             }
         }
         if (property.gas_meter_points != null) {
-            for (MeterPointDto meterPoint : property.gas_meter_points) {
-                collectMetersFromMeterPoint(meterPoint, "GAS", result);
+            for (MeterPointDto meterPointDto : property.gas_meter_points) {
+                collectMeterPointData(meterPointDto, "GAS", result);
             }
         }
     }
 
-    private void collectMetersFromMeterPoint(MeterPointDto meterPoint, String meterType, List<MeterWithAgreements> result) {
-        if (meterPoint.meters == null) {
-            return;
-        }
-        for (MeterDetailDto meter : meterPoint.meters) {
-            Meter meterRecord = new Meter(
-                    "GAS".equals(meterType) ? meterPoint.mprn : meterPoint.mpan,
-                    meter.serial_number,
-                    false,
-                    meterType
-            );
-            List<AgreementDetailDto> agreementDtos = meterPoint.agreements != null
-                    ? new ArrayList<>(meterPoint.agreements)
-                    : new ArrayList<>();
-            result.add(new MeterWithAgreements(meterRecord, agreementDtos, meterType));
-        }
-    }
-
-    private String determineMeterType(Agreement agreement, List<MeterWithAgreements> metersWithAgreements) {
-        for (MeterWithAgreements mwa : metersWithAgreements) {
-            for (AgreementDetailDto dto : mwa.agreementDtos()) {
-                if (dto.tariff_code.equals(agreement.getTariffCode())) {
-                    return mwa.meterType();
-                }
-            }
-        }
-        return "ELEC"; // default
+    private void collectMeterPointData(MeterPointDto meterPointDto, String meterType, List<MeterPointData> result) {
+        MeterPoint meterPoint = new MeterPoint(
+                "GAS".equals(meterType) ? meterPointDto.mprn : meterPointDto.mpan,
+                ofNullable(meterPointDto.is_export).orElse(false),
+                meterType
+        );
+        List<MeterDetailDto> meterDtos = meterPointDto.meters != null
+                ? new ArrayList<>(meterPointDto.meters)
+                : new ArrayList<>();
+        List<AgreementDetailDto> agreementDtos = meterPointDto.agreements != null
+                ? new ArrayList<>(meterPointDto.agreements)
+                : new ArrayList<>();
+        result.add(new MeterPointData(meterPoint, meterDtos, agreementDtos));
     }
 
     private List<StandingCharge> loadStandingCharges(StandingChargesResponse sc, Agreement agreementRecord) {
@@ -478,9 +476,9 @@ public class OctopusService {
         boolean includePeriodTo = agreement.getValidTo() != null
                 && !agreement.getValidTo().equals(agreement.getValidFrom());
 
+        String periodTo = ofNullable(agreement.getValidTo()).map(v -> v.atOffset(java.time.ZoneOffset.UTC).toString()).orElse(null);
         String initialUrl;
         if (includePeriodTo) {
-            String periodTo = agreement.getValidTo().atOffset(java.time.ZoneOffset.UTC).toString();
             initialUrl = String.format(
                     "%s/products/%s/%s-tariffs/%s/%s/?period_from=%s&period_to=%s&page_size=1500",
                     octopusConfig.getBaseUrl(),
@@ -539,7 +537,7 @@ public class OctopusService {
             }
         }
 
-        logger.info("Fetched {} {} unit rates for tariff {}", allUnitRates.size(), rateTypeLabel, agreement.getTariffCode());
+        logger.info("Fetched {} {} unit rates for tariff {} between {} and {}", allUnitRates.size(), rateTypeLabel, agreement.getTariffCode(), periodFrom, periodTo);
         return allUnitRates;
     }
 
@@ -565,6 +563,137 @@ public class OctopusService {
         } catch (Exception e) {
             logger.error("Failed to refresh consumption data: {}", e.getMessage(), e);
         }
+    }
+
+    @Transactional
+    public void populateHalfHourlyTariffData() {
+        unitRateByHalfHourRepository.deleteAllInBatch();
+
+        List<Agreement> agreements = agreementRepository.findAll();
+        // Keyed by the same tuple as UNIT_RATE_BY_HALF_HOUR's unique constraint, so overlapping
+        // source data (e.g. superseded unit_rate periods) can never produce a duplicate insert.
+        Map<String, UnitRateByHalfHour> slotsByKey = new LinkedHashMap<>();
+        int duplicatesSkipped = 0;
+
+        for (Agreement agreement : agreements) {
+            LocalDateTime windowEnd = agreement.getValidTo() != null
+                    ? agreement.getValidTo()
+                    : LocalDateTime.now().plusDays(90);
+
+            List<UnitRate> rates = unitRateRepository.findByAgreementIdOrderByValidFrom(agreement.getId()).stream()
+                    .filter(r -> !r.getValidFrom().isBefore(agreement.getValidFrom()) && r.getValidFrom().isBefore(windowEnd))
+                    .toList();
+
+            Map<String, List<UnitRate>> series = groupIntoSeries(rates);
+
+            Optional<DayAndNightTariff> dnt = dayAndNightTariffRepository.findByTariffCode(agreement.getTariffCode());
+
+            List<UnitRateByHalfHour> agreementSlots = new ArrayList<>();
+            if (dnt.isEmpty()) {
+                for (List<UnitRate> s : series.values()) {
+                    agreementSlots.addAll(expandSeriesToHalfHourSlots(s, windowEnd));
+                }
+            } else {
+                agreementSlots.addAll(expandDayAndNightSeries(agreement, series, dnt.get(), windowEnd));
+            }
+
+            for (UnitRateByHalfHour slot : agreementSlots) {
+                String key = slot.getAgreementId() + "|" + slot.getValidFrom() + "|" + slot.getPaymentMethod() + "|" + slot.getRateType();
+                if (slotsByKey.putIfAbsent(key, slot) != null) {
+                    duplicatesSkipped++;
+                }
+            }
+        }
+
+        if (duplicatesSkipped > 0) {
+            logger.warn("Skipped {} duplicate half-hourly slots (overlapping unit_rate periods)", duplicatesSkipped);
+        }
+
+        long startTime = System.currentTimeMillis();
+        List<UnitRateByHalfHour> saved = unitRateByHalfHourRepository.saveAll(new ArrayList<>(slotsByKey.values()));
+        long durationMs = System.currentTimeMillis() - startTime;
+        logger.info("Saved {} half-hourly unit rate records in {} ms", saved.size(), durationMs);
+    }
+
+    private Map<String, List<UnitRate>> groupIntoSeries(List<UnitRate> rates) {
+        Map<String, List<UnitRate>> series = new LinkedHashMap<>();
+        for (UnitRate rate : rates) {
+            String key = rate.getRateType() + "|" + rate.getPaymentMethod();
+            series.computeIfAbsent(key, k -> new ArrayList<>()).add(rate);
+        }
+        return series;
+    }
+
+    private List<UnitRateByHalfHour> expandSeriesToHalfHourSlots(List<UnitRate> series, LocalDateTime windowEnd) {
+        List<UnitRateByHalfHour> slots = new ArrayList<>();
+        for (int i = 0; i < series.size(); i++) {
+            UnitRate rate = series.get(i);
+            LocalDateTime rawEndBound = i + 1 < series.size()
+                    ? series.get(i + 1).getValidFrom()
+                    : (rate.getValidTo() != null ? rate.getValidTo() : windowEnd);
+            // Never generate slots past the agreement's own window, even if the unit_rate
+            // record's own valid_to extends further (e.g. a superseded price-change record).
+            LocalDateTime endBound = rawEndBound.isBefore(windowEnd) ? rawEndBound : windowEnd;
+
+            LocalDateTime slot = rate.getValidFrom();
+            while (slot.isBefore(endBound)) {
+                slots.add(new UnitRateByHalfHour(
+                        rate.getAgreementId(),
+                        rate.getValueExcVat(),
+                        rate.getValueIncVat(),
+                        slot,
+                        slot.plusMinutes(30),
+                        rate.getPaymentMethod(),
+                        rate.getRateType()
+                ));
+                slot = slot.plusMinutes(30);
+            }
+        }
+        return slots;
+    }
+
+    private List<UnitRateByHalfHour> expandDayAndNightSeries(Agreement agreement, Map<String, List<UnitRate>> series, DayAndNightTariff dnt, LocalDateTime windowEnd) {
+        Map<LocalDateTime, UnitRateByHalfHour> daySlots = new java.util.HashMap<>();
+        Map<LocalDateTime, UnitRateByHalfHour> nightSlots = new java.util.HashMap<>();
+
+        for (Map.Entry<String, List<UnitRate>> entry : series.entrySet()) {
+            String rateType = entry.getKey().split("\\|", 2)[0];
+            for (UnitRateByHalfHour halfHour : expandSeriesToHalfHourSlots(entry.getValue(), windowEnd)) {
+                if ("DAY".equals(rateType)) {
+                    daySlots.put(halfHour.getValidFrom(), halfHour);
+                } else if ("NIGHT".equals(rateType)) {
+                    nightSlots.put(halfHour.getValidFrom(), halfHour);
+                }
+            }
+        }
+
+        List<UnitRateByHalfHour> slots = new ArrayList<>();
+        LocalDateTime slot = agreement.getValidFrom();
+        while (slot.isBefore(windowEnd)) {
+            LocalTime localTime = slot.atZone(ZoneOffset.UTC).withZoneSameInstant(LONDON_ZONE).toLocalTime();
+            boolean isNight = isNightTime(localTime, dnt.getNightRateValidFrom(), dnt.getDayRateValidFrom());
+            UnitRateByHalfHour source = isNight ? nightSlots.get(slot) : daySlots.get(slot);
+            if (source != null) {
+                slots.add(new UnitRateByHalfHour(
+                        source.getAgreementId(),
+                        source.getValueExcVat(),
+                        source.getValueIncVat(),
+                        slot,
+                        slot.plusMinutes(30),
+                        source.getPaymentMethod(),
+                        isNight ? "NIGHT" : "DAY"
+                ));
+            }
+            slot = slot.plusMinutes(30);
+        }
+        return slots;
+    }
+
+    private boolean isNightTime(LocalTime time, LocalTime nightFrom, LocalTime dayFrom) {
+        if (nightFrom.isAfter(dayFrom)) {
+            return !time.isBefore(nightFrom) || time.isBefore(dayFrom);
+        }
+        return !time.isBefore(nightFrom) && time.isBefore(dayFrom);
     }
 
     public static class AccountResponse {

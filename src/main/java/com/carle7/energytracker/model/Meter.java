@@ -5,7 +5,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "METER", uniqueConstraints = {
-    @UniqueConstraint(columnNames = {"mpan", "serial_number"})
+    @UniqueConstraint(columnNames = {"meter_point_id", "serial_number"})
 })
 public class Meter {
 
@@ -13,17 +13,11 @@ public class Meter {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "mpan", nullable = false)
-    private String mpan;
-
     @Column(name = "serial_number", nullable = false)
     private String serialNumber;
 
-    @Column(name = "is_export", nullable = false)
-    private Boolean isExport;
-
-    @Column(name = "meter_type", nullable = false)
-    private String meterType;
+    @Column(name = "meter_point_id", nullable = false)
+    private Long meterPointId;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
@@ -32,11 +26,9 @@ public class Meter {
         this.createdAt = LocalDateTime.now();
     }
 
-    public Meter(String mpan, String serialNumber, Boolean isExport, String meterType) {
-        this.mpan = mpan;
+    public Meter(String serialNumber, Long meterPointId) {
         this.serialNumber = serialNumber;
-        this.isExport = isExport;
-        this.meterType = meterType;
+        this.meterPointId = meterPointId;
         this.createdAt = LocalDateTime.now();
     }
 
@@ -48,14 +40,6 @@ public class Meter {
         this.id = id;
     }
 
-    public String getMpan() {
-        return mpan;
-    }
-
-    public void setMpan(String mpan) {
-        this.mpan = mpan;
-    }
-
     public String getSerialNumber() {
         return serialNumber;
     }
@@ -64,20 +48,12 @@ public class Meter {
         this.serialNumber = serialNumber;
     }
 
-    public Boolean getIsExport() {
-        return isExport;
+    public Long getMeterPointId() {
+        return meterPointId;
     }
 
-    public void setIsExport(Boolean isExport) {
-        this.isExport = isExport;
-    }
-
-    public String getMeterType() {
-        return meterType;
-    }
-
-    public void setMeterType(String meterType) {
-        this.meterType = meterType;
+    public void setMeterPointId(Long meterPointId) {
+        this.meterPointId = meterPointId;
     }
 
     public LocalDateTime getCreatedAt() {

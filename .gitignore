@@ -34,3 +34,6 @@ build/
 
 ### Properties files containing ids and passwords ###
 /src/main/resources/octopus.properties
+
+### Full real-data export for local testing (trimmed subset is committed instead) ###
+/src/test/resources/half-hourly-integration-data-full.sql

@@ -80,4 +80,15 @@ public class UsageController {
     public String getAccountDetails() {
         return octopusService.getAccountDetails();
     }
+
+    @PostMapping("/api/octopus/tariffs/half-hourly")
+    public ResponseEntity<String> populateHalfHourlyTariffData() {
+        try {
+            octopusService.populateHalfHourlyTariffData();
+            return ResponseEntity.ok("Half-hourly tariff data populated successfully");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("Failed to populate half-hourly tariff data: " + e.getMessage());
+        }
+    }
 }
