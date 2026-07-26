@@ -46,7 +46,7 @@ class OctopusServiceTest {
     private List<UnitRateByHalfHour> runAndCapture() {
         when(unitRateByHalfHourRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        octopusService.populateHalfHourlyTariffData();
+        octopusService.populateHalfHourlyUnitRates();
 
         ArgumentCaptor<List<UnitRateByHalfHour>> captor = ArgumentCaptor.forClass(List.class);
         org.mockito.Mockito.verify(unitRateByHalfHourRepository).saveAll(captor.capture());

@@ -36,10 +36,10 @@ class OctopusServiceHalfHourlyIntegrationTest {
 
     @Test
     @Sql("/half-hourly-integration-data.sql")
-    void populateHalfHourlyTariffData_doesNotViolateUniqueConstraintOnRealData() {
+    void populateHalfHourlyUnitRates() {
         assertThat(agreementRepository.findAll()).isNotEmpty();
 
-        octopusService.populateHalfHourlyTariffData();
+        octopusService.populateHalfHourlyUnitRates();
 
         List<UnitRateByHalfHour> slots = unitRateByHalfHourRepository.findAll();
         assertThat(slots).isNotEmpty();

@@ -9,11 +9,7 @@ import com.carle7.energytracker.model.StandingCharge;
 import com.carle7.energytracker.model.UnitRate;
 import com.carle7.energytracker.model.UnitRateByHalfHour;
 import com.carle7.energytracker.model.Usage;
-import com.carle7.energytracker.repository.AgreementRepository;
-import com.carle7.energytracker.repository.MeterPointRepository;
-import com.carle7.energytracker.repository.MeterRepository;
-import com.carle7.energytracker.repository.UnitRateByHalfHourRepository;
-import com.carle7.energytracker.repository.UsageRepository;
+import com.carle7.energytracker.repository.*;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -62,16 +58,16 @@ public class OctopusService {
     private ObjectMapper objectMapper;
 
     @Autowired
-    private com.carle7.energytracker.repository.StandingChargeRepository standingChargeRepository;
+    private StandingChargeRepository standingChargeRepository;
 
     @Autowired
-    private com.carle7.energytracker.repository.UnitRateRepository unitRateRepository;
+    private UnitRateRepository unitRateRepository;
 
     @Autowired
     private MeterPointRepository meterPointRepository;
 
     @Autowired
-    private com.carle7.energytracker.repository.DayAndNightTariffRepository dayAndNightTariffRepository;
+    private DayAndNightTariffRepository dayAndNightTariffRepository;
 
     @Autowired
     private UnitRateByHalfHourRepository unitRateByHalfHourRepository;
@@ -154,9 +150,11 @@ public class OctopusService {
     }
 
     @Transactional
-    public void loadAccountDetails() {
+    public AccountLoadResult loadAccountDetails() {
+        AccountLoadResult result = new AccountLoadResult();
         try {
             // Clear existing data before reloading from Octopus API. Order matters because of FK constraints.
+            unitRateByHalfHourRepository.deleteAllInBatch();
             unitRateRepository.deleteAllInBatch();
             standingChargeRepository.deleteAllInBatch();
             agreementRepository.deleteAllInBatch();
@@ -166,13 +164,14 @@ public class OctopusService {
             String jsonResponse = getAccountDetails();
             if (jsonResponse == null) {
                 logger.error("Failed to load account details: API returned null response");
-                return;
+                result.setError("API returned null response");
+                return result;
             }
 
             AccountResponse accountResponse = objectMapper.readValue(jsonResponse, AccountResponse.class);
 
             if (accountResponse.properties == null) {
-                return;
+                return result;
             }
 
             // Collect all meter points from all properties
@@ -189,6 +188,7 @@ public class OctopusService {
             List<MeterPoint> savedMeterPoints = meterPointRepository.saveAll(meterPoints);
             long durationMs = System.currentTimeMillis() - startTime;
             logger.info("Saved {} meter point records in {} ms", savedMeterPoints.size(), durationMs);
+            result.setMeterPointCount(savedMeterPoints.size());
 
             // Update meterPointsData with saved meter point IDs
             for (int i = 0; i < savedMeterPoints.size(); i++) {
@@ -206,6 +206,7 @@ public class OctopusService {
             List<Meter> savedMeters = meterRepository.saveAll(meters);
             durationMs = System.currentTimeMillis() - startTime;
             logger.info("Saved {} meter records in {} ms", savedMeters.size(), durationMs);
+            result.setMeterCount(savedMeters.size());
 
             // Collect agreements per meter point, deduplicating by tariff_code/valid_from within each meter point
             List<Agreement> agreements = new ArrayList<>();
@@ -228,6 +229,7 @@ public class OctopusService {
             List<Agreement> savedAgreements = agreementRepository.saveAll(agreements);
             durationMs = System.currentTimeMillis() - startTime;
             logger.info("Saved {} agreement records in {} ms", savedAgreements.size(), durationMs);
+            result.setAgreementCount(savedAgreements.size());
 
             // Build a map from meter point ID to meter type for standing charge / unit rate lookups
             var meterTypeByMeterPointId = new java.util.HashMap<Long, String>();
@@ -236,12 +238,15 @@ public class OctopusService {
             }
 
             // Load standing charges and unit rates for each agreement
+            int standingChargeCount = 0;
+            int unitRateCount = 0;
             for (Agreement agreement : savedAgreements) {
                 String meterType = meterTypeByMeterPointId.getOrDefault(agreement.getMeterPointId(), "ELEC");
 
                 var standingChargeResponse = loadStandingCharges(agreement.getTariffCode(), meterType);
-                var standingCharges = loadStandingCharges(standingChargeResponse, agreement);
+                var standingCharges = mapStandingChargesResponse(standingChargeResponse, agreement);
                 standingChargeRepository.saveAll(standingCharges);
+                standingChargeCount += standingCharges.size();
 
                 // Check if this is a day-and-night tariff
                 boolean isDayAndNightTariff = dayAndNightTariffRepository
@@ -252,17 +257,91 @@ public class OctopusService {
                     // Load day and night rates from separate endpoints
                     var dayRates = fetchAllUnitRates(agreement, meterType, "day", "DAY");
                     unitRateRepository.saveAll(dayRates);
+                    unitRateCount += dayRates.size();
 
                     var nightRates = fetchAllUnitRates(agreement, meterType, "night", "NIGHT");
                     unitRateRepository.saveAll(nightRates);
+                    unitRateCount += nightRates.size();
                 } else {
                     // Load standard rates
                     var unitRates = fetchAllUnitRates(agreement, meterType, "standard", "STANDARD");
                     unitRateRepository.saveAll(unitRates);
+                    unitRateCount += unitRates.size();
                 }
             }
+            result.setStandingChargeCount(standingChargeCount);
+            result.setUnitRateCount(unitRateCount);
+            result.setUnitRatesByHalfHourCount(this.populateHalfHourlyUnitRates());
         } catch (Exception e) {
             logger.error("Failed to load account details: {}", e.getMessage(), e);
+            result.setError(e.getMessage());
+        }
+        return result;
+    }
+
+    public static class AccountLoadResult {
+        private int meterPointCount;
+        private int meterCount;
+        private int agreementCount;
+        private int standingChargeCount;
+        private int unitRateCount;
+        private int unitRatesByHalfHourCount;
+        private String error;
+
+        public int getMeterPointCount() {
+            return meterPointCount;
+        }
+
+        public void setMeterPointCount(int meterPointCount) {
+            this.meterPointCount = meterPointCount;
+        }
+
+        public int getMeterCount() {
+            return meterCount;
+        }
+
+        public void setMeterCount(int meterCount) {
+            this.meterCount = meterCount;
+        }
+
+        public int getAgreementCount() {
+            return agreementCount;
+        }
+
+        public void setAgreementCount(int agreementCount) {
+            this.agreementCount = agreementCount;
+        }
+
+        public int getStandingChargeCount() {
+            return standingChargeCount;
+        }
+
+        public void setStandingChargeCount(int standingChargeCount) {
+            this.standingChargeCount = standingChargeCount;
+        }
+
+        public int getUnitRateCount() {
+            return unitRateCount;
+        }
+
+        public void setUnitRateCount(int unitRateCount) {
+            this.unitRateCount = unitRateCount;
+        }
+
+        public int getUnitRatesByHalfHourCount() {
+            return unitRatesByHalfHourCount;
+        }
+
+        public void setUnitRatesByHalfHourCount(int unitRatesByHalfHourCount) {
+            this.unitRatesByHalfHourCount = unitRatesByHalfHourCount;
+        }
+
+        public String getError() {
+            return error;
+        }
+
+        public void setError(String error) {
+            this.error = error;
         }
     }
 
@@ -296,7 +375,7 @@ public class OctopusService {
         result.add(new MeterPointData(meterPoint, meterDtos, agreementDtos));
     }
 
-    private List<StandingCharge> loadStandingCharges(StandingChargesResponse sc, Agreement agreementRecord) {
+    private List<StandingCharge> mapStandingChargesResponse(StandingChargesResponse sc, Agreement agreementRecord) {
         List<StandingCharge> standingCharges = new ArrayList<>();
         if (sc != null && sc.results != null) {
             for (StandingChargeDto scDto : sc.results) {
@@ -314,8 +393,8 @@ public class OctopusService {
         return standingCharges;
     }
 
-    private List<com.carle7.energytracker.model.UnitRate> loadUnitRates(UnitRatesResponse ur, Agreement agreementRecord, String rateType) {
-        List<com.carle7.energytracker.model.UnitRate> unitRates = new ArrayList<>();
+    private List<UnitRate> mapUnitRatesResponse(UnitRatesResponse ur, Agreement agreementRecord, String rateType) {
+        List<UnitRate> unitRates = new ArrayList<>();
         if (ur != null && ur.results != null) {
             for (UnitRateDto urDto : ur.results) {
                 LocalDateTime urValidFrom = parseDateTime(urDto.valid_from);
@@ -324,7 +403,7 @@ public class OctopusService {
                 BigDecimal valueInc = BigDecimal.valueOf(urDto.value_inc_vat);
                 String paymentMethod = ofNullable(urDto.payment_method).orElse("NA");
 
-                unitRates.add(new com.carle7.energytracker.model.UnitRate(
+                unitRates.add(new UnitRate(
                         agreementRecord.getId(), valueExc, valueInc, urValidFrom, urValidTo, paymentMethod, rateType
                 ));
             }
@@ -402,61 +481,7 @@ public class OctopusService {
         }
     }
 
-    private UnitRatesResponse loadUnitRates(String tariffCode, String meterType, String rateType) {
-        String type = switch (meterType) {
-            case "GAS" -> "gas";
-            case "ELEC" -> "electricity";
-            default -> throw new IllegalArgumentException("Invalid meter type: " + meterType);
-        };
-        String product = computeProductName(tariffCode);
-        String endpoint = switch (rateType) {
-            case "day" -> "day-unit-rates";
-            case "night" -> "night-unit-rates";
-            default -> "standard-unit-rates";
-        };
-        String url = String.format(
-                "%s/products/%s/%s-tariffs/%s/%s/",
-                octopusConfig.getBaseUrl(),
-                product,
-                type,
-                tariffCode,
-                endpoint
-        );
-
-        String basicAuth = Base64.getEncoder().encodeToString((octopusConfig.getAuthToken() + ":").getBytes());
-        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
-        headers.set("Authorization", "Basic " + basicAuth);
-        org.springframework.http.HttpEntity<String> entity = new org.springframework.http.HttpEntity<>(headers);
-
-        try {
-            long startTime = System.currentTimeMillis();
-            org.springframework.http.ResponseEntity<String> response = restTemplate.exchange(
-                    url,
-                    org.springframework.http.HttpMethod.GET,
-                    entity,
-                    String.class
-            );
-            long durationMs = System.currentTimeMillis() - startTime;
-            logger.info("GET {} completed in {} ms", url, durationMs);
-
-            if (!response.getStatusCode().is2xxSuccessful()) {
-                logger.error("API error from {}: {} {}", url, response.getStatusCode(), response.getBody());
-                return new UnitRatesResponse();
-            }
-
-            try {
-                return objectMapper.readValue(response.getBody(), UnitRatesResponse.class);
-            } catch (JsonProcessingException e) {
-                logger.error("Failed to parse unit rates response from {}: {}", url, e.getMessage(), e);
-                return new UnitRatesResponse();
-            }
-        } catch (Exception e) {
-            logger.error("Failed to fetch unit rates from {}: {}", url, e.getMessage(), e);
-            return new UnitRatesResponse();
-        }
-    }
-
-    private List<com.carle7.energytracker.model.UnitRate> fetchAllUnitRates(Agreement agreement, String meterType, String rateType, String rateTypeLabel) {
+    private List<UnitRate> fetchAllUnitRates(Agreement agreement, String meterType, String rateType, String rateTypeLabel) {
         String type = switch (meterType) {
             case "GAS" -> "gas";
             case "ELEC" -> "electricity";
@@ -501,7 +526,7 @@ public class OctopusService {
             );
         }
 
-        List<com.carle7.energytracker.model.UnitRate> allUnitRates = new ArrayList<>();
+        List<UnitRate> allUnitRates = new ArrayList<>();
         String nextUrl = initialUrl;
 
         String basicAuth = Base64.getEncoder().encodeToString((octopusConfig.getAuthToken() + ":").getBytes());
@@ -527,7 +552,7 @@ public class OctopusService {
                 }
 
                 UnitRatesResponse unitRatesResponse = objectMapper.readValue(response.getBody(), UnitRatesResponse.class);
-                var unitRates = loadUnitRates(unitRatesResponse, agreement, rateTypeLabel);
+                var unitRates = mapUnitRatesResponse(unitRatesResponse, agreement, rateTypeLabel);
                 allUnitRates.addAll(unitRates);
 
                 nextUrl = unitRatesResponse.next;
@@ -566,9 +591,7 @@ public class OctopusService {
     }
 
     @Transactional
-    public void populateHalfHourlyTariffData() {
-        unitRateByHalfHourRepository.deleteAllInBatch();
-
+    public int populateHalfHourlyUnitRates() {
         List<Agreement> agreements = agreementRepository.findAll();
         // Keyed by the same tuple as UNIT_RATE_BY_HALF_HOUR's unique constraint, so overlapping
         // source data (e.g. superseded unit_rate periods) can never produce a duplicate insert.
@@ -613,6 +636,8 @@ public class OctopusService {
         List<UnitRateByHalfHour> saved = unitRateByHalfHourRepository.saveAll(new ArrayList<>(slotsByKey.values()));
         long durationMs = System.currentTimeMillis() - startTime;
         logger.info("Saved {} half-hourly unit rate records in {} ms", saved.size(), durationMs);
+
+        return saved.size();
     }
 
     private Map<String, List<UnitRate>> groupIntoSeries(List<UnitRate> rates) {
