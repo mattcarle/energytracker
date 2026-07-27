@@ -1,22 +1,18 @@
 package com.carle7.energytracker.service;
 
-import com.carle7.energytracker.config.OctopusConfig;
 import com.carle7.energytracker.model.Agreement;
 import com.carle7.energytracker.model.DayAndNightTariff;
 import com.carle7.energytracker.model.Meter;
 import com.carle7.energytracker.model.MeterPoint;
-import com.carle7.energytracker.model.StandingCharge;
 import com.carle7.energytracker.model.UnitRate;
 import com.carle7.energytracker.model.UnitRateByHalfHour;
 import com.carle7.energytracker.model.Usage;
 import com.carle7.energytracker.repository.*;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -26,7 +22,6 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,10 +35,7 @@ public class OctopusService {
     private static final Logger logger = LoggerFactory.getLogger(OctopusService.class);
 
     @Autowired
-    private OctopusConfig octopusConfig;
-
-    @Autowired
-    private RestTemplate restTemplate;
+    private OctopusApiService octopusApiService;
 
     @Autowired
     private UsageRepository usageRepository;
@@ -74,81 +66,6 @@ public class OctopusService {
 
     private static final ZoneId LONDON_ZONE = ZoneId.of("Europe/London");
 
-    public String getConsumption() {
-        String url = String.format(
-                "%s/electricity-meter-points/%s/meters/%s/consumption/",
-                octopusConfig.getBaseUrl(),
-                octopusConfig.getMpan(),
-                octopusConfig.getMeterSerial()
-        );
-
-        String basicAuth = Base64.getEncoder().encodeToString((octopusConfig.getAuthToken() + ":").getBytes());
-
-        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
-        headers.set("Authorization", "Basic " + basicAuth);
-
-        org.springframework.http.HttpEntity<String> entity = new org.springframework.http.HttpEntity<>(headers);
-
-        try {
-            long startTime = System.currentTimeMillis();
-            org.springframework.http.ResponseEntity<String> response = restTemplate.exchange(
-                    url,
-                    org.springframework.http.HttpMethod.GET,
-                    entity,
-                    String.class
-            );
-            long durationMs = System.currentTimeMillis() - startTime;
-            logger.info("GET {} completed in {} ms", url, durationMs);
-
-            if (!response.getStatusCode().is2xxSuccessful()) {
-                logger.error("API error from {}: {} {}", url, response.getStatusCode(), response.getBody());
-                return null;
-            }
-
-            return response.getBody();
-        } catch (Exception e) {
-            logger.error("Failed to fetch consumption from {}: {}", url, e.getMessage(), e);
-            return null;
-        }
-    }
-
-    public String getAccountDetails() {
-        String url = String.format(
-                "%s/accounts/%s/",
-                octopusConfig.getBaseUrl(),
-                octopusConfig.getAccountNumber()
-        );
-
-        String basicAuth = Base64.getEncoder().encodeToString((octopusConfig.getAuthToken() + ":").getBytes());
-
-        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
-        headers.set("Authorization", "Basic " + basicAuth);
-
-        org.springframework.http.HttpEntity<String> entity = new org.springframework.http.HttpEntity<>(headers);
-
-        try {
-            long startTime = System.currentTimeMillis();
-            org.springframework.http.ResponseEntity<String> response = restTemplate.exchange(
-                    url,
-                    org.springframework.http.HttpMethod.GET,
-                    entity,
-                    String.class
-            );
-            long durationMs = System.currentTimeMillis() - startTime;
-            logger.info("GET {} completed in {} ms", url, durationMs);
-
-            if (!response.getStatusCode().is2xxSuccessful()) {
-                logger.error("API error from {}: {} {}", url, response.getStatusCode(), response.getBody());
-                return null;
-            }
-
-            return response.getBody();
-        } catch (Exception e) {
-            logger.error("Failed to fetch account details from {}: {}", url, e.getMessage(), e);
-            return null;
-        }
-    }
-
     @Transactional
     public AccountLoadResult loadAccountDetails() {
         AccountLoadResult result = new AccountLoadResult();
@@ -161,7 +78,7 @@ public class OctopusService {
             meterRepository.deleteAllInBatch();
             meterPointRepository.deleteAllInBatch();
 
-            String jsonResponse = getAccountDetails();
+            String jsonResponse = octopusApiService.fetchAccountDetails();
             if (jsonResponse == null) {
                 logger.error("Failed to load account details: API returned null response");
                 result.setError("API returned null response");
@@ -243,8 +160,7 @@ public class OctopusService {
             for (Agreement agreement : savedAgreements) {
                 String meterType = meterTypeByMeterPointId.getOrDefault(agreement.getMeterPointId(), "ELEC");
 
-                var standingChargeResponse = loadStandingCharges(agreement.getTariffCode(), meterType);
-                var standingCharges = mapStandingChargesResponse(standingChargeResponse, agreement);
+                var standingCharges = octopusApiService.fetchStandingCharges(agreement, meterType);
                 standingChargeRepository.saveAll(standingCharges);
                 standingChargeCount += standingCharges.size();
 
@@ -255,16 +171,16 @@ public class OctopusService {
 
                 if (isDayAndNightTariff) {
                     // Load day and night rates from separate endpoints
-                    var dayRates = fetchAllUnitRates(agreement, meterType, "day", "DAY");
+                    var dayRates = octopusApiService.fetchAllUnitRates(agreement, meterType, "day", "DAY");
                     unitRateRepository.saveAll(dayRates);
                     unitRateCount += dayRates.size();
 
-                    var nightRates = fetchAllUnitRates(agreement, meterType, "night", "NIGHT");
+                    var nightRates = octopusApiService.fetchAllUnitRates(agreement, meterType, "night", "NIGHT");
                     unitRateRepository.saveAll(nightRates);
                     unitRateCount += nightRates.size();
                 } else {
                     // Load standard rates
-                    var unitRates = fetchAllUnitRates(agreement, meterType, "standard", "STANDARD");
+                    var unitRates = octopusApiService.fetchAllUnitRates(agreement, meterType, "standard", "STANDARD");
                     unitRateRepository.saveAll(unitRates);
                     unitRateCount += unitRates.size();
                 }
@@ -375,200 +291,13 @@ public class OctopusService {
         result.add(new MeterPointData(meterPoint, meterDtos, agreementDtos));
     }
 
-    private List<StandingCharge> mapStandingChargesResponse(StandingChargesResponse sc, Agreement agreementRecord) {
-        List<StandingCharge> standingCharges = new ArrayList<>();
-        if (sc != null && sc.results != null) {
-            for (StandingChargeDto scDto : sc.results) {
-                LocalDateTime scValidFrom = parseDateTime(scDto.valid_from);
-                LocalDateTime scValidTo = scDto.valid_to != null ? parseDateTime(scDto.valid_to) : null;
-                BigDecimal valueExc = BigDecimal.valueOf(scDto.value_exc_vat);
-                BigDecimal valueInc = BigDecimal.valueOf(scDto.value_inc_vat);
-                String paymentMethod = ofNullable(scDto.payment_method).orElse("NA");
-
-                standingCharges.add(new StandingCharge(
-                        agreementRecord.getId(), valueExc, valueInc, scValidFrom, scValidTo, paymentMethod
-                ));
-            }
-        }
-        return standingCharges;
-    }
-
-    private List<UnitRate> mapUnitRatesResponse(UnitRatesResponse ur, Agreement agreementRecord, String rateType) {
-        List<UnitRate> unitRates = new ArrayList<>();
-        if (ur != null && ur.results != null) {
-            for (UnitRateDto urDto : ur.results) {
-                LocalDateTime urValidFrom = parseDateTime(urDto.valid_from);
-                LocalDateTime urValidTo = urDto.valid_to != null ? parseDateTime(urDto.valid_to) : null;
-                BigDecimal valueExc = BigDecimal.valueOf(urDto.value_exc_vat);
-                BigDecimal valueInc = BigDecimal.valueOf(urDto.value_inc_vat);
-                String paymentMethod = ofNullable(urDto.payment_method).orElse("NA");
-
-                unitRates.add(new UnitRate(
-                        agreementRecord.getId(), valueExc, valueInc, urValidFrom, urValidTo, paymentMethod, rateType
-                ));
-            }
-        }
-        return unitRates;
-    }
-
     private LocalDateTime parseDateTime(String dateTimeString) {
         return OffsetDateTime.parse(dateTimeString).toLocalDateTime();
     }
 
-    /**
-     * Compute product name from tariff code by removing the first two tokens and the last token.
-     * Example: E-1R-INTELLI-FIX-12M-26-02-11-H -> INTELLI-FIX-12M-26-02-11
-     */
-    private String computeProductName(String tariffCode) {
-        if (tariffCode == null) return "";
-        String[] parts = tariffCode.split("-");
-        if (parts.length <= 3) {
-            return tariffCode;
-        }
-        StringBuilder sb = new StringBuilder();
-        for (int i = 2; i < parts.length - 1; i++) {
-            if (!sb.isEmpty()) sb.append('-');
-            sb.append(parts[i]);
-        }
-        return sb.toString();
-    }
-
-    private StandingChargesResponse loadStandingCharges(String tariffCode, String meterType) {
-        String type = switch (meterType) {
-            case "GAS" -> "gas";
-            case "ELEC" -> "electricity";
-            default -> throw new IllegalArgumentException("Invalid meter type: " + meterType);
-        };
-        String product = computeProductName(tariffCode);
-        String url = String.format(
-                "%s/products/%s/%s-tariffs/%s/standing-charges/",
-                octopusConfig.getBaseUrl(),
-                product,
-                type,
-                tariffCode
-        );
-
-        String basicAuth = Base64.getEncoder().encodeToString((octopusConfig.getAuthToken() + ":").getBytes());
-        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
-        headers.set("Authorization", "Basic " + basicAuth);
-        org.springframework.http.HttpEntity<String> entity = new org.springframework.http.HttpEntity<>(headers);
-
-        try {
-            long startTime = System.currentTimeMillis();
-            org.springframework.http.ResponseEntity<String> response = restTemplate.exchange(
-                    url,
-                    org.springframework.http.HttpMethod.GET,
-                    entity,
-                    String.class
-            );
-            long durationMs = System.currentTimeMillis() - startTime;
-            logger.info("GET {} completed in {} ms", url, durationMs);
-
-            if (!response.getStatusCode().is2xxSuccessful()) {
-                logger.error("API error from {}: {} {}", url, response.getStatusCode(), response.getBody());
-                return new StandingChargesResponse();
-            }
-
-            try {
-                return objectMapper.readValue(response.getBody(), StandingChargesResponse.class);
-            } catch (JsonProcessingException e) {
-                logger.error("Failed to parse standing charges response from {}: {}", url, e.getMessage(), e);
-                return new StandingChargesResponse();
-            }
-        } catch (Exception e) {
-            logger.error("Failed to fetch standing charges from {}: {}", url, e.getMessage(), e);
-            return new StandingChargesResponse();
-        }
-    }
-
-    private List<UnitRate> fetchAllUnitRates(Agreement agreement, String meterType, String rateType, String rateTypeLabel) {
-        String type = switch (meterType) {
-            case "GAS" -> "gas";
-            case "ELEC" -> "electricity";
-            default -> throw new IllegalArgumentException("Invalid meter type: " + meterType);
-        };
-        String product = computeProductName(agreement.getTariffCode());
-        String endpoint = switch (rateType) {
-            case "day" -> "day-unit-rates";
-            case "night" -> "night-unit-rates";
-            default -> "standard-unit-rates";
-        };
-
-        // Build period parameters
-        String periodFrom = agreement.getValidFrom().atOffset(java.time.ZoneOffset.UTC).toString();
-
-        // Omit period_to if it equals period_from or is null
-        boolean includePeriodTo = agreement.getValidTo() != null
-                && !agreement.getValidTo().equals(agreement.getValidFrom());
-
-        String periodTo = ofNullable(agreement.getValidTo()).map(v -> v.atOffset(java.time.ZoneOffset.UTC).toString()).orElse(null);
-        String initialUrl;
-        if (includePeriodTo) {
-            initialUrl = String.format(
-                    "%s/products/%s/%s-tariffs/%s/%s/?period_from=%s&period_to=%s&page_size=1500",
-                    octopusConfig.getBaseUrl(),
-                    product,
-                    type,
-                    agreement.getTariffCode(),
-                    endpoint,
-                    periodFrom,
-                    periodTo
-            );
-        } else {
-            initialUrl = String.format(
-                    "%s/products/%s/%s-tariffs/%s/%s/?period_from=%s&page_size=1500",
-                    octopusConfig.getBaseUrl(),
-                    product,
-                    type,
-                    agreement.getTariffCode(),
-                    endpoint,
-                    periodFrom
-            );
-        }
-
-        List<UnitRate> allUnitRates = new ArrayList<>();
-        String nextUrl = initialUrl;
-
-        String basicAuth = Base64.getEncoder().encodeToString((octopusConfig.getAuthToken() + ":").getBytes());
-        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
-        headers.set("Authorization", "Basic " + basicAuth);
-        org.springframework.http.HttpEntity<String> entity = new org.springframework.http.HttpEntity<>(headers);
-
-        while (nextUrl != null) {
-            try {
-                long startTime = System.currentTimeMillis();
-                org.springframework.http.ResponseEntity<String> response = restTemplate.exchange(
-                        nextUrl,
-                        org.springframework.http.HttpMethod.GET,
-                        entity,
-                        String.class
-                );
-                long durationMs = System.currentTimeMillis() - startTime;
-                logger.info("GET {} completed in {} ms", nextUrl, durationMs);
-
-                if (!response.getStatusCode().is2xxSuccessful()) {
-                    logger.error("API error from {}: {} {}", nextUrl, response.getStatusCode(), response.getBody());
-                    break;
-                }
-
-                UnitRatesResponse unitRatesResponse = objectMapper.readValue(response.getBody(), UnitRatesResponse.class);
-                var unitRates = mapUnitRatesResponse(unitRatesResponse, agreement, rateTypeLabel);
-                allUnitRates.addAll(unitRates);
-
-                nextUrl = unitRatesResponse.next;
-            } catch (Exception e) {
-                logger.error("Failed to fetch unit rates from {}: {}", nextUrl, e.getMessage(), e);
-                break;
-            }
-        }
-
-        logger.info("Fetched {} {} unit rates for tariff {} between {} and {}", allUnitRates.size(), rateTypeLabel, agreement.getTariffCode(), periodFrom, periodTo);
-        return allUnitRates;
-    }
-
     public void refreshData() {
         try {
-            String jsonResponse = getConsumption();
+            String jsonResponse = octopusApiService.getConsumption();
             if (jsonResponse == null) {
                 logger.warn("No consumption data available; skipping refresh");
                 return;
@@ -788,34 +517,5 @@ public class OctopusService {
         }
     }
 
-    public static class StandingChargesResponse {
-        public int count;
-        public String next;
-        public String previous;
-        public List<StandingChargeDto> results;
-    }
-
-    public static class StandingChargeDto {
-        public double value_exc_vat;
-        public double value_inc_vat;
-        public String valid_from;
-        public String valid_to;
-        public String payment_method;
-    }
-
-    public static class UnitRatesResponse {
-        public int count;
-        public String next;
-        public String previous;
-        public List<UnitRateDto> results;
-    }
-
-    public static class UnitRateDto {
-        public double value_exc_vat;
-        public double value_inc_vat;
-        public String valid_from;
-        public String valid_to;
-        public String payment_method;
-    }
 }
 

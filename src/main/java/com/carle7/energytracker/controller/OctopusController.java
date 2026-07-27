@@ -1,5 +1,6 @@
 package com.carle7.energytracker.controller;
 
+import com.carle7.energytracker.service.OctopusApiService;
 import com.carle7.energytracker.service.OctopusService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -15,9 +16,12 @@ public class OctopusController {
     @Autowired
     private OctopusService octopusService;
 
+    @Autowired
+    private OctopusApiService octopusApiService;
+
     @GetMapping(value = "/api/octopus/consumption", produces = MediaType.APPLICATION_JSON_VALUE)
     public String getOctopusConsumption() {
-        return octopusService.getConsumption();
+        return octopusApiService.getConsumption();
     }
 
     @PostMapping("/api/octopus/account/load")
@@ -31,7 +35,7 @@ public class OctopusController {
 
     @GetMapping(value = "/api/octopus/account/details", produces = MediaType.APPLICATION_JSON_VALUE)
     public String getAccountDetails() {
-        return octopusService.getAccountDetails();
+        return octopusApiService.fetchAccountDetails();
     }
 
     @PostMapping("/api/octopus/tariffs/half-hourly")
