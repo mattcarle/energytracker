@@ -21,12 +21,16 @@ public class Usage {
     @Column(name = "consumption", nullable = false)
     private BigDecimal consumption;
 
+    @Column(name = "mpan", nullable = false)
+    private String mpan;
+
     public Usage() {}
 
-    public Usage(LocalDateTime intervalFrom, LocalDateTime intervalTo, BigDecimal consumption) {
+    public Usage(LocalDateTime intervalFrom, LocalDateTime intervalTo, BigDecimal consumption, String mpan) {
         this.intervalFrom = intervalFrom;
         this.intervalTo = intervalTo;
         this.consumption = consumption;
+        this.mpan = mpan;
     }
 
     public Long getId() {
@@ -59,5 +63,13 @@ public class Usage {
 
     public void setConsumption(BigDecimal consumption) {
         this.consumption = consumption;
+    }
+
+    public String getMpan() {
+        return mpan;
+    }
+
+    public void setMpan(String mpan) {
+        this.mpan = mpan;
     }
 }

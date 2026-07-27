@@ -8,7 +8,12 @@ import com.carle7.energytracker.model.UnitRate;
 import com.carle7.energytracker.model.UnitRateByHalfHour;
 import com.carle7.energytracker.model.Usage;
 import com.carle7.energytracker.repository.*;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.carle7.energytracker.service.OctopusApiService.AccountResponse;
+import com.carle7.energytracker.service.OctopusApiService.AgreementDetailDto;
+import com.carle7.energytracker.service.OctopusApiService.ConsumptionResponse;
+import com.carle7.energytracker.service.OctopusApiService.MeterDetailDto;
+import com.carle7.energytracker.service.OctopusApiService.MeterPointDto;
+import com.carle7.energytracker.service.OctopusApiService.PropertyDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,9 +52,6 @@ public class OctopusService {
     private AgreementRepository agreementRepository;
 
     @Autowired
-    private ObjectMapper objectMapper;
-
-    @Autowired
     private StandingChargeRepository standingChargeRepository;
 
     @Autowired
@@ -67,7 +69,7 @@ public class OctopusService {
     private static final ZoneId LONDON_ZONE = ZoneId.of("Europe/London");
 
     @Transactional
-    public AccountLoadResult loadAccountDetails() {
+    public AccountLoadResult loadAccountData() {
         AccountLoadResult result = new AccountLoadResult();
         try {
             // Clear existing data before reloading from Octopus API. Order matters because of FK constraints.
@@ -78,14 +80,12 @@ public class OctopusService {
             meterRepository.deleteAllInBatch();
             meterPointRepository.deleteAllInBatch();
 
-            String jsonResponse = octopusApiService.fetchAccountDetails();
-            if (jsonResponse == null) {
+            AccountResponse accountResponse = octopusApiService.fetchAccountData();
+            if (accountResponse == null) {
                 logger.error("Failed to load account details: API returned null response");
                 result.setError("API returned null response");
                 return result;
             }
-
-            AccountResponse accountResponse = objectMapper.readValue(jsonResponse, AccountResponse.class);
 
             if (accountResponse.properties == null) {
                 return result;
@@ -295,27 +295,74 @@ public class OctopusService {
         return OffsetDateTime.parse(dateTimeString).toLocalDateTime();
     }
 
-    public void refreshData() {
+    public UsageLoadResult loadUsageData() {
+        UsageLoadResult result = new UsageLoadResult();
         try {
-            String jsonResponse = octopusApiService.getConsumption();
-            if (jsonResponse == null) {
-                logger.warn("No consumption data available; skipping refresh");
-                return;
-            }
-            ConsumptionResponse response = objectMapper.readValue(jsonResponse, ConsumptionResponse.class);
+            LocalDateTime periodFrom = usageRepository.findFirstByOrderByIntervalToDesc()
+                    .map(Usage::getIntervalTo)
+                    .or(() -> agreementRepository.findFirstByOrderByValidFromAsc().map(Agreement::getValidFrom))
+                    .orElse(null);
 
-            if (response.results != null) {
-                for (ConsumptionDto data : response.results) {
-                    Usage usage = new Usage(
-                            data.getIntervalStartAsLocalDateTime(),
-                            data.getIntervalEndAsLocalDateTime(),
-                            new BigDecimal(data.consumption)
-                    );
-                    usageRepository.save(usage);
+            if (periodFrom == null) {
+                logger.warn("No existing usage data and no agreements found; skipping usage load");
+                return result;
+            }
+
+            LocalDateTime periodTo = LocalDateTime.now();
+            if (!periodFrom.isBefore(periodTo)) {
+                return result;
+            }
+
+            int usageCount = 0;
+            for (MeterPoint meterPoint : meterPointRepository.findAll()) {
+                for (Meter meter : meterRepository.findByMeterPointId(meterPoint.getId())) {
+                    ConsumptionResponse response = octopusApiService.fetchConsumptionData(
+                            meterPoint.getMeterType(), meterPoint.getMpan(), meter.getSerialNumber(), periodFrom, periodTo);
+                    if (response == null) {
+                        logger.error("Failed to load usage data for mpan {} meter {}", meterPoint.getMpan(), meter.getSerialNumber());
+                        continue;
+                    }
+
+                    if (response.results != null) {
+                        List<Usage> usages = response.results.stream()
+                                .map(data -> new Usage(
+                                        data.getIntervalStartAsLocalDateTime(),
+                                        data.getIntervalEndAsLocalDateTime(),
+                                        new BigDecimal(data.consumption),
+                                        meterPoint.getMpan()
+                                ))
+                                .toList();
+                        usageRepository.saveAll(usages);
+                        usageCount += usages.size();
+                    }
                 }
             }
+            result.setUsageCount(usageCount);
         } catch (Exception e) {
-            logger.error("Failed to refresh consumption data: {}", e.getMessage(), e);
+            logger.error("Failed to load usage data: {}", e.getMessage(), e);
+            result.setError(e.getMessage());
+        }
+        return result;
+    }
+
+    public static class UsageLoadResult {
+        private int usageCount;
+        private String error;
+
+        public int getUsageCount() {
+            return usageCount;
+        }
+
+        public void setUsageCount(int usageCount) {
+            this.usageCount = usageCount;
+        }
+
+        public String getError() {
+            return error;
+        }
+
+        public void setError(String error) {
+            this.error = error;
         }
     }
 
@@ -448,73 +495,6 @@ public class OctopusService {
             return !time.isBefore(nightFrom) || time.isBefore(dayFrom);
         }
         return !time.isBefore(nightFrom) && time.isBefore(dayFrom);
-    }
-
-    public static class AccountResponse {
-        public String number;
-        public List<PropertyDto> properties;
-    }
-
-    public static class PropertyDto {
-        public int id;
-        public String moved_in_at;
-        public String moved_out_at;
-        public String address_line_1;
-        public String address_line_2;
-        public String address_line_3;
-        public String town;
-        public String county;
-        public String postcode;
-        public List<MeterPointDto> electricity_meter_points;
-        public List<MeterPointDto> gas_meter_points;
-    }
-
-    public static class MeterPointDto {
-        public String mpan;
-        public String mprn;
-        public int profile_class;
-        public int consumption_standard;
-        public List<MeterDetailDto> meters;
-        public List<AgreementDetailDto> agreements;
-        public Boolean is_export;
-    }
-
-    public static class MeterDetailDto {
-        public String serial_number;
-        public List<RegisterDto> registers;
-    }
-
-    public static class RegisterDto {
-        public String identifier;
-        public String rate;
-        public boolean is_settlement_register;
-    }
-
-    public static class AgreementDetailDto {
-        public String tariff_code;
-        public String valid_from;
-        public String valid_to;
-    }
-
-    public static class ConsumptionResponse {
-        public int count;
-        public String next;
-        public String previous;
-        public List<ConsumptionDto> results;
-    }
-
-    public static class ConsumptionDto {
-        public double consumption;
-        public String interval_start;
-        public String interval_end;
-
-        public LocalDateTime getIntervalStartAsLocalDateTime() {
-            return OffsetDateTime.parse(interval_start).toLocalDateTime();
-        }
-
-        public LocalDateTime getIntervalEndAsLocalDateTime() {
-            return OffsetDateTime.parse(interval_end).toLocalDateTime();
-        }
     }
 
 }

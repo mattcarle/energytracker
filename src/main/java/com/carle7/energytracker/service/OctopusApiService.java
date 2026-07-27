@@ -13,8 +13,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
+import java.net.URI;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -35,12 +37,16 @@ public class OctopusApiService {
     @Autowired
     private ObjectMapper objectMapper;
 
-    public String getConsumption() {
-        String url = String.format(
-                "%s/electricity-meter-points/%s/meters/%s/consumption/",
+    public ConsumptionResponse fetchConsumptionData(String meterType, String mpan, String meterSerial, LocalDateTime periodFrom, LocalDateTime periodTo) {
+        String meterPointsSegment = "GAS".equals(meterType) ? "gas-meter-points" : "electricity-meter-points";
+        String initialUrl = String.format(
+                "%s/%s/%s/meters/%s/consumption/?period_from=%s&period_to=%s&page_size=25000",
                 octopusConfig.getBaseUrl(),
-                octopusConfig.getMpan(),
-                octopusConfig.getMeterSerial()
+                meterPointsSegment,
+                mpan,
+                meterSerial,
+                periodFrom.atOffset(ZoneOffset.UTC).toString(),
+                periodTo.atOffset(ZoneOffset.UTC).toString()
         );
 
         String basicAuth = Base64.getEncoder().encodeToString((octopusConfig.getAuthToken() + ":").getBytes());
@@ -50,30 +56,56 @@ public class OctopusApiService {
 
         org.springframework.http.HttpEntity<String> entity = new org.springframework.http.HttpEntity<>(headers);
 
-        try {
-            long startTime = System.currentTimeMillis();
-            org.springframework.http.ResponseEntity<String> response = restTemplate.exchange(
-                    url,
-                    org.springframework.http.HttpMethod.GET,
-                    entity,
-                    String.class
-            );
-            long durationMs = System.currentTimeMillis() - startTime;
-            logger.info("GET {} completed in {} ms", url, durationMs);
+        List<ConsumptionDto> allResults = new ArrayList<>();
+        String nextUrl = initialUrl;
+        boolean firstPage = true;
 
-            if (!response.getStatusCode().is2xxSuccessful()) {
-                logger.error("API error from {}: {} {}", url, response.getStatusCode(), response.getBody());
-                return null;
+        while (nextUrl != null) {
+            try {
+                long startTime = System.currentTimeMillis();
+                org.springframework.http.ResponseEntity<String> response = restTemplate.exchange(
+                        URI.create(nextUrl),
+                        org.springframework.http.HttpMethod.GET,
+                        entity,
+                        String.class
+                );
+                long durationMs = System.currentTimeMillis() - startTime;
+                logger.info("GET {} completed in {} ms", nextUrl, durationMs);
+
+                if (!response.getStatusCode().is2xxSuccessful()) {
+                    logger.error("API error from {}: {} {}", nextUrl, response.getStatusCode(), response.getBody());
+                    if (firstPage) return null;
+                    break;
+                }
+
+                ConsumptionResponse pageResponse;
+                try {
+                    pageResponse = objectMapper.readValue(response.getBody(), ConsumptionResponse.class);
+                } catch (JsonProcessingException e) {
+                    logger.error("Failed to parse consumption response from {}: {}", nextUrl, e.getMessage(), e);
+                    if (firstPage) return null;
+                    break;
+                }
+
+                if (pageResponse.results != null) {
+                    allResults.addAll(pageResponse.results);
+                }
+                nextUrl = pageResponse.next;
+                firstPage = false;
+            } catch (Exception e) {
+                logger.error("Failed to fetch consumption from {}: {}", nextUrl, e.getMessage(), e);
+                if (firstPage) return null;
+                break;
             }
-
-            return response.getBody();
-        } catch (Exception e) {
-            logger.error("Failed to fetch consumption from {}: {}", url, e.getMessage(), e);
-            return null;
         }
+
+        ConsumptionResponse combined = new ConsumptionResponse();
+        combined.count = allResults.size();
+        combined.results = allResults;
+        return combined;
     }
 
-    public String fetchAccountDetails() {
+    public AccountResponse fetchAccountData() {
         String url = String.format(
                 "%s/accounts/%s/",
                 octopusConfig.getBaseUrl(),
@@ -90,7 +122,7 @@ public class OctopusApiService {
         try {
             long startTime = System.currentTimeMillis();
             org.springframework.http.ResponseEntity<String> response = restTemplate.exchange(
-                    url,
+                    URI.create(url),
                     org.springframework.http.HttpMethod.GET,
                     entity,
                     String.class
@@ -103,7 +135,12 @@ public class OctopusApiService {
                 return null;
             }
 
-            return response.getBody();
+            try {
+                return objectMapper.readValue(response.getBody(), AccountResponse.class);
+            } catch (JsonProcessingException e) {
+                logger.error("Failed to parse account details response from {}: {}", url, e.getMessage(), e);
+                return null;
+            }
         } catch (Exception e) {
             logger.error("Failed to fetch account details from {}: {}", url, e.getMessage(), e);
             return null;
@@ -134,7 +171,7 @@ public class OctopusApiService {
         try {
             long startTime = System.currentTimeMillis();
             org.springframework.http.ResponseEntity<String> response = restTemplate.exchange(
-                    url,
+                    URI.create(url),
                     org.springframework.http.HttpMethod.GET,
                     entity,
                     String.class
@@ -217,7 +254,7 @@ public class OctopusApiService {
             try {
                 long startTime = System.currentTimeMillis();
                 org.springframework.http.ResponseEntity<String> response = restTemplate.exchange(
-                        nextUrl,
+                        URI.create(nextUrl),
                         org.springframework.http.HttpMethod.GET,
                         entity,
                         String.class
@@ -331,5 +368,72 @@ public class OctopusApiService {
         public String valid_from;
         public String valid_to;
         public String payment_method;
+    }
+
+    public static class AccountResponse {
+        public String number;
+        public List<PropertyDto> properties;
+    }
+
+    public static class PropertyDto {
+        public int id;
+        public String moved_in_at;
+        public String moved_out_at;
+        public String address_line_1;
+        public String address_line_2;
+        public String address_line_3;
+        public String town;
+        public String county;
+        public String postcode;
+        public List<MeterPointDto> electricity_meter_points;
+        public List<MeterPointDto> gas_meter_points;
+    }
+
+    public static class MeterPointDto {
+        public String mpan;
+        public String mprn;
+        public int profile_class;
+        public int consumption_standard;
+        public List<MeterDetailDto> meters;
+        public List<AgreementDetailDto> agreements;
+        public Boolean is_export;
+    }
+
+    public static class MeterDetailDto {
+        public String serial_number;
+        public List<RegisterDto> registers;
+    }
+
+    public static class RegisterDto {
+        public String identifier;
+        public String rate;
+        public boolean is_settlement_register;
+    }
+
+    public static class AgreementDetailDto {
+        public String tariff_code;
+        public String valid_from;
+        public String valid_to;
+    }
+
+    public static class ConsumptionResponse {
+        public int count;
+        public String next;
+        public String previous;
+        public List<ConsumptionDto> results;
+    }
+
+    public static class ConsumptionDto {
+        public double consumption;
+        public String interval_start;
+        public String interval_end;
+
+        public LocalDateTime getIntervalStartAsLocalDateTime() {
+            return OffsetDateTime.parse(interval_start).toLocalDateTime();
+        }
+
+        public LocalDateTime getIntervalEndAsLocalDateTime() {
+            return OffsetDateTime.parse(interval_end).toLocalDateTime();
+        }
     }
 }
