@@ -175,4 +175,27 @@ class OctopusServiceTest {
                 .allSatisfy(validFrom -> assertThat(validFrom).isBefore(agreement.getValidTo()));
         assertThat(slots.get(slots.size() - 1).getValidFrom()).isEqualTo(LocalDateTime.parse("2022-01-01T23:30:00"));
     }
+
+    @Test
+    void firstRecordStartingBeforeAgreementValidFrom_isFlooredAtAgreementWindow() {
+        // Octopus can return a unit_rate record whose own valid_from predates the agreement's
+        // valid_from (the price change happened before the agreement took effect). Generation must
+        // start at the agreement's window, not the record's, otherwise it overlaps the prior agreement.
+        Agreement agreement = new Agreement("E-1R-EARLY-TEST", LocalDateTime.parse("2022-01-01T00:30:00"), LocalDateTime.parse("2022-01-01T02:00:00"), 6L);
+        agreement.setId(6L);
+
+        UnitRate rate = new UnitRate(6L, BigDecimal.valueOf(12), BigDecimal.valueOf(12.5), LocalDateTime.parse("2021-12-01T00:00:00"), null, "NA", "STANDARD");
+
+        when(agreementRepository.findAll()).thenReturn(List.of(agreement));
+        when(unitRateRepository.findByAgreementIdOrderByValidFrom(6L)).thenReturn(List.of(rate));
+        when(dayAndNightTariffRepository.findByTariffCode("E-1R-EARLY-TEST")).thenReturn(Optional.empty());
+
+        List<UnitRateByHalfHour> slots = runAndCapture();
+
+        assertThat(slots).extracting(UnitRateByHalfHour::getValidFrom).containsExactly(
+                LocalDateTime.parse("2022-01-01T00:30:00"),
+                LocalDateTime.parse("2022-01-01T01:00:00"),
+                LocalDateTime.parse("2022-01-01T01:30:00")
+        );
+    }
 }

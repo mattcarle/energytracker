@@ -380,7 +380,7 @@ public class OctopusService {
                     : LocalDateTime.now().plusDays(90);
 
             List<UnitRate> rates = unitRateRepository.findByAgreementIdOrderByValidFrom(agreement.getId()).stream()
-                    .filter(r -> !r.getValidFrom().isBefore(agreement.getValidFrom()) && r.getValidFrom().isBefore(windowEnd))
+                    .filter(r -> r.getValidFrom().isBefore(windowEnd))
                     .toList();
 
             Map<String, List<UnitRate>> series = groupIntoSeries(rates);
@@ -390,7 +390,7 @@ public class OctopusService {
             List<UnitRateByHalfHour> agreementSlots = new ArrayList<>();
             if (dnt.isEmpty()) {
                 for (List<UnitRate> s : series.values()) {
-                    agreementSlots.addAll(expandSeriesToHalfHourSlots(s, windowEnd));
+                    agreementSlots.addAll(expandSeriesToHalfHourSlots(s, agreement.getValidFrom(), windowEnd));
                 }
             } else {
                 agreementSlots.addAll(expandDayAndNightSeries(agreement, series, dnt.get(), windowEnd));
@@ -425,7 +425,7 @@ public class OctopusService {
         return series;
     }
 
-    private List<UnitRateByHalfHour> expandSeriesToHalfHourSlots(List<UnitRate> series, LocalDateTime windowEnd) {
+    private List<UnitRateByHalfHour> expandSeriesToHalfHourSlots(List<UnitRate> series, LocalDateTime windowStart, LocalDateTime windowEnd) {
         List<UnitRateByHalfHour> slots = new ArrayList<>();
         for (int i = 0; i < series.size(); i++) {
             UnitRate rate = series.get(i);
@@ -436,7 +436,9 @@ public class OctopusService {
             // record's own valid_to extends further (e.g. a superseded price-change record).
             LocalDateTime endBound = rawEndBound.isBefore(windowEnd) ? rawEndBound : windowEnd;
 
-            LocalDateTime slot = rate.getValidFrom();
+            // Never generate slots before the agreement's own window, even if the unit_rate
+            // record's own valid_from starts earlier (e.g. a price change that predates the agreement).
+            LocalDateTime slot = rate.getValidFrom().isBefore(windowStart) ? windowStart : rate.getValidFrom();
             while (slot.isBefore(endBound)) {
                 slots.add(new UnitRateByHalfHour(
                         rate.getAgreementId(),
@@ -459,7 +461,7 @@ public class OctopusService {
 
         for (Map.Entry<String, List<UnitRate>> entry : series.entrySet()) {
             String rateType = entry.getKey().split("\\|", 2)[0];
-            for (UnitRateByHalfHour halfHour : expandSeriesToHalfHourSlots(entry.getValue(), windowEnd)) {
+            for (UnitRateByHalfHour halfHour : expandSeriesToHalfHourSlots(entry.getValue(), agreement.getValidFrom(), windowEnd)) {
                 if ("DAY".equals(rateType)) {
                     daySlots.put(halfHour.getValidFrom(), halfHour);
                 } else if ("NIGHT".equals(rateType)) {

@@ -32,8 +32,7 @@ CREATE TABLE IF NOT EXISTS USAGE (
     interval_from TIMESTAMP NOT NULL,
     interval_to TIMESTAMP NOT NULL,
     consumption DECIMAL(10, 4) NOT NULL,
-    mpan VARCHAR(255) NOT NULL,
-    FOREIGN KEY (mpan) REFERENCES METER_POINT(mpan)
+    mpan VARCHAR(255) NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS STANDING_CHARGE (
@@ -87,3 +86,5 @@ CREATE TABLE IF NOT EXISTS DAY_AND_NIGHT_TARIFF (
 
 CREATE INDEX IF NOT EXISTS idx_agreement_tariff_code ON AGREEMENT(tariff_code);
 CREATE INDEX IF NOT EXISTS idx_day_and_night_tariff_tariff_code ON DAY_AND_NIGHT_TARIFF(tariff_code);
+CREATE INDEX IF NOT EXISTS idx_unit_rate_by_half_hour_valid_from ON UNIT_RATE_BY_HALF_HOUR(valid_from);
+CREATE INDEX IF NOT EXISTS idx_usage_interval_from ON USAGE(interval_from);
