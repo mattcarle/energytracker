@@ -4,6 +4,8 @@ import com.carle7.energytracker.model.Agreement;
 import com.carle7.energytracker.model.DayAndNightTariff;
 import com.carle7.energytracker.model.Meter;
 import com.carle7.energytracker.model.MeterPoint;
+import com.carle7.energytracker.model.StandingCharge;
+import com.carle7.energytracker.model.StandingChargeByDay;
 import com.carle7.energytracker.model.UnitRate;
 import com.carle7.energytracker.model.UnitRateByHalfHour;
 import com.carle7.energytracker.model.Usage;
@@ -21,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
@@ -66,6 +69,9 @@ public class OctopusService {
     @Autowired
     private UnitRateByHalfHourRepository unitRateByHalfHourRepository;
 
+    @Autowired
+    private StandingChargeByDayRepository standingChargeByDayRepository;
+
     private static final ZoneId LONDON_ZONE = ZoneId.of("Europe/London");
 
     @Transactional
@@ -74,6 +80,7 @@ public class OctopusService {
         try {
             // Clear existing data before reloading from Octopus API. Order matters because of FK constraints.
             unitRateByHalfHourRepository.deleteAllInBatch();
+            standingChargeByDayRepository.deleteAllInBatch();
             unitRateRepository.deleteAllInBatch();
             standingChargeRepository.deleteAllInBatch();
             agreementRepository.deleteAllInBatch();
@@ -188,6 +195,7 @@ public class OctopusService {
             result.setStandingChargeCount(standingChargeCount);
             result.setUnitRateCount(unitRateCount);
             result.setUnitRatesByHalfHourCount(this.populateHalfHourlyUnitRates());
+            result.setStandingChargesByDayCount(this.populateDailyStandingCharges());
         } catch (Exception e) {
             logger.error("Failed to load account details: {}", e.getMessage(), e);
             result.setError(e.getMessage());
@@ -202,6 +210,7 @@ public class OctopusService {
         private int standingChargeCount;
         private int unitRateCount;
         private int unitRatesByHalfHourCount;
+        private int standingChargesByDayCount;
         private String error;
 
         public int getMeterPointCount() {
@@ -250,6 +259,14 @@ public class OctopusService {
 
         public void setUnitRatesByHalfHourCount(int unitRatesByHalfHourCount) {
             this.unitRatesByHalfHourCount = unitRatesByHalfHourCount;
+        }
+
+        public int getStandingChargesByDayCount() {
+            return standingChargesByDayCount;
+        }
+
+        public void setStandingChargesByDayCount(int standingChargesByDayCount) {
+            this.standingChargesByDayCount = standingChargesByDayCount;
         }
 
         public String getError() {
@@ -497,6 +514,111 @@ public class OctopusService {
             return !time.isBefore(nightFrom) || time.isBefore(dayFrom);
         }
         return !time.isBefore(nightFrom) && time.isBefore(dayFrom);
+    }
+
+    /**
+     * Standing charges apply per local (Europe/London) calendar day, even though everything is
+     * stored in UTC. So a day's valid_from is the UTC instant of local midnight for that day:
+     * 23:00 the previous day during BST, 00:00 the same day during GMT.
+     */
+    @Transactional
+    public int populateDailyStandingCharges() {
+        List<Agreement> agreements = agreementRepository.findAll();
+        // Keyed by the same tuple as STANDING_CHARGE_BY_DAY's unique constraint, so overlapping
+        // source data (e.g. superseded standing_charge periods) can never produce a duplicate insert.
+        Map<String, StandingChargeByDay> daysByKey = new LinkedHashMap<>();
+        int duplicatesSkipped = 0;
+
+        for (Agreement agreement : agreements) {
+            LocalDateTime windowEnd = agreement.getValidTo() != null
+                    ? agreement.getValidTo()
+                    : LocalDateTime.now().plusDays(90);
+
+            List<StandingCharge> charges = standingChargeRepository.findByAgreementIdOrderByValidFrom(agreement.getId()).stream()
+                    .filter(c -> c.getValidFrom().isBefore(windowEnd))
+                    .toList();
+
+            Map<String, List<StandingCharge>> series = groupStandingChargesByPaymentMethod(charges);
+
+            for (List<StandingCharge> s : series.values()) {
+                for (StandingChargeByDay day : expandSeriesToDailySlots(s, agreement.getValidFrom(), windowEnd)) {
+                    String key = day.getAgreementId() + "|" + day.getValidFrom() + "|" + day.getPaymentMethod();
+                    if (daysByKey.putIfAbsent(key, day) != null) {
+                        duplicatesSkipped++;
+                    }
+                }
+            }
+        }
+
+        if (duplicatesSkipped > 0) {
+            logger.warn("Skipped {} duplicate daily standing charge slots (overlapping standing_charge periods)", duplicatesSkipped);
+        }
+
+        long startTime = System.currentTimeMillis();
+        List<StandingChargeByDay> saved = standingChargeByDayRepository.saveAll(new ArrayList<>(daysByKey.values()));
+        long durationMs = System.currentTimeMillis() - startTime;
+        logger.info("Saved {} daily standing charge records in {} ms", saved.size(), durationMs);
+
+        return saved.size();
+    }
+
+    private Map<String, List<StandingCharge>> groupStandingChargesByPaymentMethod(List<StandingCharge> charges) {
+        Map<String, List<StandingCharge>> series = new LinkedHashMap<>();
+        for (StandingCharge charge : charges) {
+            series.computeIfAbsent(charge.getPaymentMethod(), k -> new ArrayList<>()).add(charge);
+        }
+        return series;
+    }
+
+    private List<StandingChargeByDay> expandSeriesToDailySlots(List<StandingCharge> series, LocalDateTime windowStart, LocalDateTime windowEnd) {
+        List<StandingChargeByDay> days = new ArrayList<>();
+        for (int i = 0; i < series.size(); i++) {
+            StandingCharge charge = series.get(i);
+            LocalDateTime rawEndBound = i + 1 < series.size()
+                    ? series.get(i + 1).getValidFrom()
+                    : (charge.getValidTo() != null ? charge.getValidTo() : windowEnd);
+            // Never generate days past the agreement's own window, even if the standing_charge
+            // record's own valid_to extends further (e.g. a superseded price-change record).
+            LocalDateTime endBound = rawEndBound.isBefore(windowEnd) ? rawEndBound : windowEnd;
+
+            // Never generate days before the agreement's own window, even if the standing_charge
+            // record's own valid_from starts earlier (e.g. a price change that predates the agreement).
+            LocalDateTime chargeStart = charge.getValidFrom().isBefore(windowStart) ? windowStart : charge.getValidFrom();
+
+            LocalDate day = londonDateOf(chargeStart);
+            LocalDateTime daySlot = londonMidnightUtc(day);
+            // A local day whose UTC midnight instant falls before chargeStart is only partially
+            // covered by this record; the day it belongs to already got its slot from elsewhere
+            // (or starts the series), so roll forward to the first fully-covered day.
+            while (daySlot.isBefore(chargeStart)) {
+                day = day.plusDays(1);
+                daySlot = londonMidnightUtc(day);
+            }
+
+            while (daySlot.isBefore(endBound)) {
+                LocalDate nextDay = day.plusDays(1);
+                LocalDateTime nextDaySlot = londonMidnightUtc(nextDay);
+                days.add(new StandingChargeByDay(
+                        charge.getAgreementId(),
+                        charge.getValueExcVat(),
+                        charge.getValueIncVat(),
+                        daySlot,
+                        nextDaySlot,
+                        charge.getPaymentMethod()
+                ));
+                day = nextDay;
+                daySlot = nextDaySlot;
+            }
+        }
+        return days;
+    }
+
+    private LocalDate londonDateOf(LocalDateTime utc) {
+        return utc.atZone(ZoneOffset.UTC).withZoneSameInstant(LONDON_ZONE).toLocalDate();
+    }
+
+    private LocalDateTime londonMidnightUtc(LocalDate londonDate) {
+        return londonDate.atStartOfDay(LONDON_ZONE).withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
     }
 
 }

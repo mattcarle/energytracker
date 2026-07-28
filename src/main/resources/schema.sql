@@ -62,6 +62,19 @@ CREATE TABLE IF NOT EXISTS UNIT_RATE (
     UNIQUE (agreement_id, valid_from, payment_method, rate_type)
 );
 
+CREATE TABLE IF NOT EXISTS STANDING_CHARGE_BY_DAY (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    agreement_id BIGINT NOT NULL,
+    value_exc_vat DECIMAL(10, 4) NOT NULL,
+    value_inc_vat DECIMAL(10, 4) NOT NULL,
+    valid_from TIMESTAMP NOT NULL,
+    valid_to TIMESTAMP,
+    payment_method VARCHAR(50) NULL CHECK(payment_method IN ('DIRECT_DEBIT', 'NON_DIRECT_DEBIT', 'NA')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (agreement_id) REFERENCES AGREEMENT(id),
+    UNIQUE (agreement_id, payment_method, valid_from)
+);
+
 CREATE TABLE IF NOT EXISTS UNIT_RATE_BY_HALF_HOUR (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     agreement_id BIGINT NOT NULL,
@@ -87,4 +100,5 @@ CREATE TABLE IF NOT EXISTS DAY_AND_NIGHT_TARIFF (
 CREATE INDEX IF NOT EXISTS idx_agreement_tariff_code ON AGREEMENT(tariff_code);
 CREATE INDEX IF NOT EXISTS idx_day_and_night_tariff_tariff_code ON DAY_AND_NIGHT_TARIFF(tariff_code);
 CREATE INDEX IF NOT EXISTS idx_unit_rate_by_half_hour_valid_from ON UNIT_RATE_BY_HALF_HOUR(valid_from);
+CREATE INDEX IF NOT EXISTS idx_standing_charge_by_day_valid_from ON STANDING_CHARGE_BY_DAY(valid_from);
 CREATE INDEX IF NOT EXISTS idx_usage_interval_from ON USAGE(interval_from);
