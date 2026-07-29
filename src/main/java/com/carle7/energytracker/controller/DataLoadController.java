@@ -31,4 +31,9 @@ public class DataLoadController {
         return ResponseEntity.ok(result);
     }
 
+    @PostMapping("/api/load/utc-to-local")
+    public ResponseEntity<Integer> loadUtcToLocalMapping() {
+        return ResponseEntity.ok(octopusService.populateUtcToLocalMapping());
+    }
+
 }

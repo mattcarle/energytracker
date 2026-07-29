@@ -89,6 +89,14 @@ CREATE TABLE IF NOT EXISTS UNIT_RATE_BY_HALF_HOUR (
     UNIQUE (agreement_id, valid_from, payment_method, rate_type)
 );
 
+CREATE TABLE IF NOT EXISTS UTC_TO_LOCAL (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    utc_time TIMESTAMP NOT NULL,
+    local_time TIMESTAMP NOT NULL,
+    time_zone VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS DAY_AND_NIGHT_TARIFF (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     tariff_code VARCHAR(255) NOT NULL UNIQUE,
@@ -102,3 +110,4 @@ CREATE INDEX IF NOT EXISTS idx_day_and_night_tariff_tariff_code ON DAY_AND_NIGHT
 CREATE INDEX IF NOT EXISTS idx_unit_rate_by_half_hour_valid_from ON UNIT_RATE_BY_HALF_HOUR(valid_from);
 CREATE INDEX IF NOT EXISTS idx_standing_charge_by_day_valid_from ON STANDING_CHARGE_BY_DAY(valid_from);
 CREATE INDEX IF NOT EXISTS idx_usage_interval_from ON USAGE(interval_from);
+CREATE INDEX IF NOT EXISTS idx_utc_to_local_utc_time ON UTC_TO_LOCAL(utc_time);

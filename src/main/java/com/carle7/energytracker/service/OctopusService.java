@@ -9,6 +9,7 @@ import com.carle7.energytracker.model.StandingChargeByDay;
 import com.carle7.energytracker.model.UnitRate;
 import com.carle7.energytracker.model.UnitRateByHalfHour;
 import com.carle7.energytracker.model.Usage;
+import com.carle7.energytracker.model.UtcToLocal;
 import com.carle7.energytracker.repository.*;
 import com.carle7.energytracker.service.OctopusApiService.AccountResponse;
 import com.carle7.energytracker.service.OctopusApiService.AgreementDetailDto;
@@ -71,6 +72,9 @@ public class OctopusService {
 
     @Autowired
     private StandingChargeByDayRepository standingChargeByDayRepository;
+
+    @Autowired
+    private UtcToLocalRepository utcToLocalRepository;
 
     private static final ZoneId LONDON_ZONE = ZoneId.of("Europe/London");
 
@@ -355,6 +359,7 @@ public class OctopusService {
                 }
             }
             result.setUsageCount(usageCount);
+            result.setUtcToLocalCount(this.populateUtcToLocalMapping());
         } catch (Exception e) {
             logger.error("Failed to load usage data: {}", e.getMessage(), e);
             result.setError(e.getMessage());
@@ -364,6 +369,7 @@ public class OctopusService {
 
     public static class UsageLoadResult {
         private int usageCount;
+        private int utcToLocalCount;
         private String error;
 
         public int getUsageCount() {
@@ -372,6 +378,14 @@ public class OctopusService {
 
         public void setUsageCount(int usageCount) {
             this.usageCount = usageCount;
+        }
+
+        public int getUtcToLocalCount() {
+            return utcToLocalCount;
+        }
+
+        public void setUtcToLocalCount(int utcToLocalCount) {
+            this.utcToLocalCount = utcToLocalCount;
         }
 
         public String getError() {
@@ -619,6 +633,49 @@ public class OctopusService {
 
     private LocalDateTime londonMidnightUtc(LocalDate londonDate) {
         return londonDate.atStartOfDay(LONDON_ZONE).withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
+    }
+
+    /**
+     * Populates UTC_TO_LOCAL with one row per half-hour slot covering the full span of
+     * UNIT_RATE_BY_HALF_HOUR data, mapping each UTC instant to its Europe/London local time and
+     * the GMT/BST abbreviation in effect at that instant, for joining against other UTC-keyed tables.
+     */
+    @Transactional
+    public int populateUtcToLocalMapping() {
+        Optional<UnitRateByHalfHour> earliest = unitRateByHalfHourRepository.findFirstByOrderByValidFromAsc();
+        Optional<UnitRateByHalfHour> latest = unitRateByHalfHourRepository.findFirstByOrderByValidFromDesc();
+
+        if (earliest.isEmpty() || latest.isEmpty()) {
+            return 0;
+        }
+
+        LocalDateTime start = earliest.get().getValidFrom();
+        LocalDateTime end = latest.get().getValidTo();
+
+        utcToLocalRepository.deleteAllInBatch();
+
+        List<UtcToLocal> mappings = new ArrayList<>();
+        LocalDateTime slot = start;
+        while (slot.isBefore(end)) {
+            mappings.add(new UtcToLocal(slot, londonLocalTimeOf(slot), londonZoneAbbreviation(slot)));
+            slot = slot.plusMinutes(30);
+        }
+
+        long startTime = System.currentTimeMillis();
+        List<UtcToLocal> saved = utcToLocalRepository.saveAll(mappings);
+        long durationMs = System.currentTimeMillis() - startTime;
+        logger.info("Saved {} UTC-to-local mapping records in {} ms", saved.size(), durationMs);
+
+        return saved.size();
+    }
+
+    private LocalDateTime londonLocalTimeOf(LocalDateTime utc) {
+        return utc.atZone(ZoneOffset.UTC).withZoneSameInstant(LONDON_ZONE).toLocalDateTime();
+    }
+
+    private String londonZoneAbbreviation(LocalDateTime utc) {
+        boolean isDst = LONDON_ZONE.getRules().isDaylightSavings(utc.toInstant(ZoneOffset.UTC));
+        return isDst ? "BST" : "GMT";
     }
 
 }
