@@ -639,6 +639,8 @@ public class OctopusService {
      * Populates UTC_TO_LOCAL with one row per half-hour slot covering the full span of
      * UNIT_RATE_BY_HALF_HOUR data, mapping each UTC instant to its Europe/London local time and
      * the GMT/BST abbreviation in effect at that instant, for joining against other UTC-keyed tables.
+     * The range is floored to local midnight of the earliest slot's local day, so the first
+     * record always has a local_time of 00:00:00.
      */
     @Transactional
     public int populateUtcToLocalMapping() {
@@ -649,7 +651,7 @@ public class OctopusService {
             return 0;
         }
 
-        LocalDateTime start = earliest.get().getValidFrom();
+        LocalDateTime start = londonMidnightUtc(londonDateOf(earliest.get().getValidFrom()));
         LocalDateTime end = latest.get().getValidTo();
 
         utcToLocalRepository.deleteAllInBatch();
