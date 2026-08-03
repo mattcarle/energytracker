@@ -1,6 +1,9 @@
 package com.carle7.energytracker.controller;
 
+import com.carle7.energytracker.repository.UsageAggregateProjection;
 import com.carle7.energytracker.repository.UsageByDayProjection;
+import com.carle7.energytracker.repository.UsageByMonthProjection;
+import com.carle7.energytracker.repository.UsageByYearProjection;
 import com.carle7.energytracker.repository.UsageRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,25 +30,67 @@ public class UsageController {
             @RequestParam(required = false) LocalDate toDate,
             @RequestParam(required = false) List<String> paymentMethods) {
 
-        LocalDate effectiveFromDate = fromDate != null ? fromDate : LocalDate.now().withDayOfMonth(1);
-        LocalDate effectiveToDate = toDate != null ? toDate : LocalDate.now().plusDays(1);
-        List<String> effectivePaymentMethods = paymentMethods != null && !paymentMethods.isEmpty()
-                ? paymentMethods
-                : DEFAULT_PAYMENT_METHODS;
+        LocalDate effectiveFromDate = effectiveFromDate(fromDate);
+        LocalDate effectiveToDate = effectiveToDate(toDate);
+        List<String> effectivePaymentMethods = effectivePaymentMethods(paymentMethods);
 
         List<UsageByDayProjection> days = usageRepository.findUsageByDay(mpan, effectiveFromDate, effectiveToDate, effectivePaymentMethods);
 
         return new UsageByDayResponse(days, computeTotals(days));
     }
 
-    private UsageTotals computeTotals(List<UsageByDayProjection> days) {
+    @GetMapping("/api/usage/by-month")
+    public UsageByMonthResponse getUsageByMonth(
+            @RequestParam String mpan,
+            @RequestParam(required = false) LocalDate fromDate,
+            @RequestParam(required = false) LocalDate toDate,
+            @RequestParam(required = false) List<String> paymentMethods) {
+
+        LocalDate effectiveFromDate = effectiveFromDate(fromDate);
+        LocalDate effectiveToDate = effectiveToDate(toDate);
+        List<String> effectivePaymentMethods = effectivePaymentMethods(paymentMethods);
+
+        List<UsageByMonthProjection> months = usageRepository.findUsageByMonth(mpan, effectiveFromDate, effectiveToDate, effectivePaymentMethods);
+
+        return new UsageByMonthResponse(months, computeTotals(months));
+    }
+
+    @GetMapping("/api/usage/by-year")
+    public UsageByYearResponse getUsageByYear(
+            @RequestParam String mpan,
+            @RequestParam(required = false) LocalDate fromDate,
+            @RequestParam(required = false) LocalDate toDate,
+            @RequestParam(required = false) List<String> paymentMethods) {
+
+        LocalDate effectiveFromDate = effectiveFromDate(fromDate);
+        LocalDate effectiveToDate = effectiveToDate(toDate);
+        List<String> effectivePaymentMethods = effectivePaymentMethods(paymentMethods);
+
+        List<UsageByYearProjection> years = usageRepository.findUsageByYear(mpan, effectiveFromDate, effectiveToDate, effectivePaymentMethods);
+
+        return new UsageByYearResponse(years, computeTotals(years));
+    }
+
+    private LocalDate effectiveFromDate(LocalDate fromDate) {
+        return fromDate != null ? fromDate : LocalDate.now().withDayOfMonth(1);
+    }
+
+    private LocalDate effectiveToDate(LocalDate toDate) {
+        return toDate != null ? toDate : LocalDate.now().plusDays(1);
+    }
+
+    private List<String> effectivePaymentMethods(List<String> paymentMethods) {
+        return paymentMethods != null && !paymentMethods.isEmpty() ? paymentMethods : DEFAULT_PAYMENT_METHODS;
+    }
+
+    private UsageTotals computeTotals(List<? extends UsageAggregateProjection> rows) {
         long intervalCount = 0;
         BigDecimal kwh = BigDecimal.ZERO;
         BigDecimal cost = BigDecimal.ZERO;
-        for (UsageByDayProjection day : days) {
-            intervalCount += day.getIntervalCount();
-            kwh = kwh.add(day.getKwh());
-            cost = cost.add(day.getCost());
+        for (UsageAggregateProjection row : rows) {
+            intervalCount += row.getIntervalCount();
+            kwh = kwh.add(row.getKwh());
+            cost = cost.add(row.getCost());
         }
         BigDecimal avgRate = kwh.compareTo(BigDecimal.ZERO) != 0
                 ? cost.divide(kwh, 6, RoundingMode.HALF_UP)
@@ -64,6 +109,42 @@ public class UsageController {
 
         public List<UsageByDayProjection> getDays() {
             return days;
+        }
+
+        public UsageTotals getTotals() {
+            return totals;
+        }
+    }
+
+    public static class UsageByMonthResponse {
+        private final List<UsageByMonthProjection> months;
+        private final UsageTotals totals;
+
+        public UsageByMonthResponse(List<UsageByMonthProjection> months, UsageTotals totals) {
+            this.months = months;
+            this.totals = totals;
+        }
+
+        public List<UsageByMonthProjection> getMonths() {
+            return months;
+        }
+
+        public UsageTotals getTotals() {
+            return totals;
+        }
+    }
+
+    public static class UsageByYearResponse {
+        private final List<UsageByYearProjection> years;
+        private final UsageTotals totals;
+
+        public UsageByYearResponse(List<UsageByYearProjection> years, UsageTotals totals) {
+            this.years = years;
+            this.totals = totals;
+        }
+
+        public List<UsageByYearProjection> getYears() {
+            return years;
         }
 
         public UsageTotals getTotals() {
