@@ -1,0 +1,68 @@
+.account-details {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 48px 24px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.account-details__error {
+  color: #d64545;
+}
+
+.account-details__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+  margin-top: 24px;
+}
+
+.meter-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.meter-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.meter-card__header h2 {
+  margin: 0;
+  text-transform: capitalize;
+}
+
+.meter-card__badge {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
+  white-space: nowrap;
+}
+
+.meter-card__list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  margin: 0;
+}
+
+.meter-card__list dt {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.meter-card__list dd {
+  margin: 0;
+  color: var(--text-h);
+  font-size: 14px;
+  word-break: break-word;
+}
