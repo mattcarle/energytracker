@@ -21,3 +21,27 @@ export interface Agreement {
   meterPointId: number
   createdAt: string
 }
+
+export interface User {
+  id: number
+  username: string
+  email: string
+  createdAt: string
+}
+
+export interface RegisterRequest {
+  username: string
+  email: string
+  password: string
+}
+
+export interface LoginRequest {
+  username: string
+  password: string
+}
+
+export interface UpdateProfileRequest {
+  email?: string
+  currentPassword?: string
+  newPassword?: string
+}
