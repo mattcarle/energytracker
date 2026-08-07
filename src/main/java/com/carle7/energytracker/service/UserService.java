@@ -16,24 +16,35 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final OctopusCredentialsService octopusCredentialsService;
 
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder,
+                        OctopusCredentialsService octopusCredentialsService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.octopusCredentialsService = octopusCredentialsService;
     }
 
     public boolean isSetupRequired() {
         return userRepository.countByRole(User.Role.ADMIN) == 0;
     }
 
+    /**
+     * Creates the admin account and stores the Octopus Energy API credentials in one
+     * transaction, so a bad account number/token can't leave setup half-done and
+     * permanently unreachable (setup-status flips to "not required" the moment the
+     * admin row exists).
+     */
     @Transactional
-    public User setupAdmin(String password) {
+    public User setupAdmin(String password, String octopusAccountNumber, String octopusAuthToken) {
         if (!isSetupRequired()) {
             throw new IllegalStateException("Admin account has already been set up");
         }
         validatePassword(password);
         User admin = new User(ADMIN_USERNAME, passwordEncoder.encode(password), User.Role.ADMIN, false);
-        return userRepository.save(admin);
+        userRepository.save(admin);
+        octopusCredentialsService.saveCredentials(octopusAccountNumber, octopusAuthToken);
+        return admin;
     }
 
     @Transactional

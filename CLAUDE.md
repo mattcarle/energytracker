@@ -42,9 +42,13 @@ Spring Boot REST API that integrates with the Octopus Energy API to track electr
 
 ### Key Configuration
 
-- **octopus.properties** - Octopus Energy API credentials and configuration
+- **octopus.properties** - Octopus Energy API base URL and meter config (account number and auth token live in the `OCTOPUS_CREDENTIALS` table instead, entered via the first-run admin setup wizard)
 - **application.properties** - H2 database (file-based at `~/h2db/energytracker`), Hibernate settings
 - **schema.sql** - Database schema initialization
+
+### Authentication
+
+Spring Security with session-cookie auth. On first run (no `ADMIN` user in `USERS`), the app requires a one-off setup: an admin password plus the Octopus account number and API auth token, which also triggers an initial account+usage data load. The admin can then add/remove other users, who are forced to change their password on first login.
 
 ### Development URLs
 

@@ -2,6 +2,7 @@ package com.carle7.energytracker.service;
 
 import com.carle7.energytracker.config.OctopusConfig;
 import com.carle7.energytracker.model.Agreement;
+import com.carle7.energytracker.model.OctopusCredentials;
 import com.carle7.energytracker.model.StandingCharge;
 import com.carle7.energytracker.model.UnitRate;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -32,12 +33,16 @@ public class OctopusApiService {
     private OctopusConfig octopusConfig;
 
     @Autowired
+    private OctopusCredentialsService octopusCredentialsService;
+
+    @Autowired
     private RestTemplate restTemplate;
 
     @Autowired
     private ObjectMapper objectMapper;
 
     public ConsumptionResponse fetchConsumptionData(String meterType, String mpan, String meterSerial, LocalDateTime periodFrom, LocalDateTime periodTo) {
+        OctopusCredentials credentials = octopusCredentialsService.getCredentials();
         String meterPointsSegment = "GAS".equals(meterType) ? "gas-meter-points" : "electricity-meter-points";
         String initialUrl = String.format(
                 "%s/%s/%s/meters/%s/consumption/?period_from=%s&period_to=%s&page_size=25000",
@@ -49,7 +54,7 @@ public class OctopusApiService {
                 periodTo.atOffset(ZoneOffset.UTC).toString()
         );
 
-        String basicAuth = Base64.getEncoder().encodeToString((octopusConfig.getAuthToken() + ":").getBytes());
+        String basicAuth = Base64.getEncoder().encodeToString((credentials.getAuthToken() + ":").getBytes());
 
         org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
         headers.set("Authorization", "Basic " + basicAuth);
@@ -106,13 +111,14 @@ public class OctopusApiService {
     }
 
     public AccountResponse fetchAccountData() {
+        OctopusCredentials credentials = octopusCredentialsService.getCredentials();
         String url = String.format(
                 "%s/accounts/%s/",
                 octopusConfig.getBaseUrl(),
-                octopusConfig.getAccountNumber()
+                credentials.getAccountNumber()
         );
 
-        String basicAuth = Base64.getEncoder().encodeToString((octopusConfig.getAuthToken() + ":").getBytes());
+        String basicAuth = Base64.getEncoder().encodeToString((credentials.getAuthToken() + ":").getBytes());
 
         org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
         headers.set("Authorization", "Basic " + basicAuth);
@@ -148,6 +154,7 @@ public class OctopusApiService {
     }
 
     public List<StandingCharge> fetchStandingCharges(Agreement agreement, String meterType) {
+        OctopusCredentials credentials = octopusCredentialsService.getCredentials();
         String tariffCode = agreement.getTariffCode();
         String type = switch (meterType) {
             case "GAS" -> "gas";
@@ -163,7 +170,7 @@ public class OctopusApiService {
                 tariffCode
         );
 
-        String basicAuth = Base64.getEncoder().encodeToString((octopusConfig.getAuthToken() + ":").getBytes());
+        String basicAuth = Base64.getEncoder().encodeToString((credentials.getAuthToken() + ":").getBytes());
         org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
         headers.set("Authorization", "Basic " + basicAuth);
         org.springframework.http.HttpEntity<String> entity = new org.springframework.http.HttpEntity<>(headers);
@@ -198,6 +205,7 @@ public class OctopusApiService {
     }
 
     public List<UnitRate> fetchAllUnitRates(Agreement agreement, String meterType, String rateType, String rateTypeLabel) {
+        OctopusCredentials credentials = octopusCredentialsService.getCredentials();
         String type = switch (meterType) {
             case "GAS" -> "gas";
             case "ELEC" -> "electricity";
@@ -245,7 +253,7 @@ public class OctopusApiService {
         List<UnitRate> allUnitRates = new ArrayList<>();
         String nextUrl = initialUrl;
 
-        String basicAuth = Base64.getEncoder().encodeToString((octopusConfig.getAuthToken() + ":").getBytes());
+        String basicAuth = Base64.getEncoder().encodeToString((credentials.getAuthToken() + ":").getBytes());
         org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
         headers.set("Authorization", "Basic " + basicAuth);
         org.springframework.http.HttpEntity<String> entity = new org.springframework.http.HttpEntity<>(headers);

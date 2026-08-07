@@ -4,9 +4,11 @@ import com.carle7.energytracker.dto.ChangePasswordRequest;
 import com.carle7.energytracker.dto.ErrorResponse;
 import com.carle7.energytracker.dto.LoginRequest;
 import com.carle7.energytracker.dto.SetupRequest;
+import com.carle7.energytracker.dto.SetupResponse;
 import com.carle7.energytracker.dto.SetupStatusResponse;
 import com.carle7.energytracker.dto.UserResponse;
 import com.carle7.energytracker.security.UserPrincipal;
+import com.carle7.energytracker.service.OctopusService;
 import com.carle7.energytracker.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -32,12 +34,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final UserService userService;
+    private final OctopusService octopusService;
     private final AuthenticationManager authenticationManager;
     private final SecurityContextRepository securityContextRepository;
 
-    public AuthController(UserService userService, AuthenticationManager authenticationManager,
+    public AuthController(UserService userService, OctopusService octopusService,
+                           AuthenticationManager authenticationManager,
                            SecurityContextRepository securityContextRepository) {
         this.userService = userService;
+        this.octopusService = octopusService;
         this.authenticationManager = authenticationManager;
         this.securityContextRepository = securityContextRepository;
     }
@@ -50,11 +55,17 @@ public class AuthController {
     @PostMapping("/setup")
     public ResponseEntity<?> setup(@RequestBody SetupRequest request, HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
         try {
-            userService.setupAdmin(request.getPassword());
+            userService.setupAdmin(request.getPassword(), request.getOctopusAccountNumber(), request.getOctopusAuthToken());
         } catch (IllegalStateException | IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
         }
-        return authenticateAndRespond("admin", request.getPassword(), httpRequest, httpResponse);
+
+        ResponseEntity<UserResponse> loginResponse = authenticateAndRespond("admin", request.getPassword(), httpRequest, httpResponse);
+
+        OctopusService.AccountLoadResult accountLoad = octopusService.loadAccountData(false);
+        OctopusService.UsageLoadResult usageLoad = octopusService.loadUsageData(false);
+
+        return ResponseEntity.ok(new SetupResponse(loginResponse.getBody(), accountLoad, usageLoad));
     }
 
     @PostMapping("/login")

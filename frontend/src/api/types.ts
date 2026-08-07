@@ -52,3 +52,26 @@ export interface AuthUser {
   mustChangePassword: boolean
   createdAt: string
 }
+
+export interface AccountLoadResult {
+  meterPointCount: number
+  meterCount: number
+  agreementCount: number
+  standingChargeCount: number
+  unitRateCount: number
+  unitRatesByHalfHourCount: number
+  standingChargesByDayCount: number
+  error: string | null
+}
+
+export interface UsageLoadResult {
+  usageCount: number
+  utcToLocalCount: number
+  error: string | null
+}
+
+export interface SetupResult {
+  user: AuthUser
+  accountLoad: AccountLoadResult
+  usageLoad: UsageLoadResult
+}

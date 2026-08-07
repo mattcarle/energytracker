@@ -1,4 +1,4 @@
-import type { Agreement, AuthUser, Meter, MeterPoint, UsageByDayResponse, UserRole } from './types'
+import type { Agreement, AuthUser, Meter, MeterPoint, SetupResult, UsageByDayResponse, UserRole } from './types'
 
 export class ApiError extends Error {
   status: number
@@ -68,8 +68,15 @@ export function getSetupStatus(): Promise<{ setupRequired: boolean }> {
   return getJson('/api/auth/setup-status')
 }
 
-export function setupAdmin(password: string): Promise<AuthUser> {
-  return request('/api/auth/setup', { method: 'POST', body: JSON.stringify({ password }) })
+export function setupAdmin(
+  password: string,
+  octopusAccountNumber: string,
+  octopusAuthToken: string,
+): Promise<SetupResult> {
+  return request('/api/auth/setup', {
+    method: 'POST',
+    body: JSON.stringify({ password, octopusAccountNumber, octopusAuthToken }),
+  })
 }
 
 export function login(username: string, password: string): Promise<AuthUser> {

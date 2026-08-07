@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { setupAdmin } from '../api/client'
-import type { AuthUser } from '../api/types'
+import type { AuthUser, SetupResult } from '../api/types'
 import './AuthScreen.css'
 
 interface SetupProps {
@@ -10,8 +10,11 @@ interface SetupProps {
 export default function Setup({ onComplete }: SetupProps) {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [octopusAccountNumber, setOctopusAccountNumber] = useState('')
+  const [octopusAuthToken, setOctopusAuthToken] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [result, setResult] = useState<SetupResult | null>(null)
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -23,10 +26,34 @@ export default function Setup({ onComplete }: SetupProps) {
     }
 
     setSubmitting(true)
-    setupAdmin(password)
-      .then(onComplete)
+    setupAdmin(password, octopusAccountNumber, octopusAuthToken)
+      .then(setResult)
       .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to create admin account'))
       .finally(() => setSubmitting(false))
+  }
+
+  if (result) {
+    return (
+      <div className="auth-screen">
+        <div className="auth-screen__card">
+          <h1 className="auth-screen__title">You&apos;re all set</h1>
+          <p className="auth-screen__subtitle">Admin account created and Octopus Energy connected.</p>
+          <p>
+            {result.accountLoad.error
+              ? `Loading account data failed: ${result.accountLoad.error}`
+              : `Loaded ${result.accountLoad.meterPointCount} meter point(s) and ${result.accountLoad.meterCount} meter(s).`}
+          </p>
+          <p>
+            {result.usageLoad.error
+              ? `Loading usage data failed: ${result.usageLoad.error}`
+              : `Loaded ${result.usageLoad.usageCount} usage record(s).`}
+          </p>
+          <button type="button" className="auth-form__submit" onClick={() => onComplete(result.user)}>
+            Continue
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -35,7 +62,7 @@ export default function Setup({ onComplete }: SetupProps) {
         <h1 className="auth-screen__title">Welcome to Energy Tracker</h1>
         <p className="auth-screen__subtitle">
           This is the first time the app has run. Choose a password for the admin account
-          (username: <code>admin</code>).
+          (username: <code>admin</code>) and connect your Octopus Energy account.
         </p>
         <form className="auth-form" onSubmit={handleSubmit}>
           <label className="auth-form__field">
@@ -59,9 +86,28 @@ export default function Setup({ onComplete }: SetupProps) {
               required
             />
           </label>
+          <label className="auth-form__field">
+            <span>Octopus account number</span>
+            <input
+              value={octopusAccountNumber}
+              onChange={(e) => setOctopusAccountNumber(e.target.value)}
+              placeholder="A-XXXXXXXX"
+              required
+            />
+          </label>
+          <label className="auth-form__field">
+            <span>Octopus API auth token</span>
+            <input
+              type="password"
+              value={octopusAuthToken}
+              onChange={(e) => setOctopusAuthToken(e.target.value)}
+              placeholder="sk_live_..."
+              required
+            />
+          </label>
           {error && <p className="auth-form__error">{error}</p>}
           <button type="submit" className="auth-form__submit" disabled={submitting}>
-            {submitting ? 'Creating account…' : 'Create admin account'}
+            {submitting ? 'Setting up…' : 'Create admin account'}
           </button>
         </form>
       </div>

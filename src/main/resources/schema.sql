@@ -115,6 +115,15 @@ CREATE TABLE IF NOT EXISTS USERS (
     UNIQUE (username)
 );
 
+-- Single-row table: the app talks to exactly one Octopus Energy account.
+CREATE TABLE IF NOT EXISTS OCTOPUS_CREDENTIALS (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    account_number VARCHAR(255) NOT NULL,
+    auth_token VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_agreement_tariff_code ON AGREEMENT(tariff_code);
 CREATE INDEX IF NOT EXISTS idx_day_and_night_tariff_tariff_code ON DAY_AND_NIGHT_TARIFF(tariff_code);
 CREATE INDEX IF NOT EXISTS idx_unit_rate_by_half_hour_valid_from ON UNIT_RATE_BY_HALF_HOUR(valid_from);
