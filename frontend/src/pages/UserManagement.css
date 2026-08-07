@@ -1,0 +1,87 @@
+.user-management {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 24px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.user-management__error {
+  color: #d64545;
+}
+
+.user-management__table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 16px;
+}
+
+.user-management__table th,
+.user-management__table td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.user-management__table th {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.user-management__table td {
+  color: var(--text-h);
+}
+
+.user-management__table button {
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.user-management__form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+  margin-top: 16px;
+}
+
+.user-management__form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text-h);
+}
+
+.user-management__form input,
+.user-management__form select {
+  font: inherit;
+  font-size: 15px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-h);
+  box-sizing: border-box;
+}
+
+.user-management__form button {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 10px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent);
+  cursor: pointer;
+  height: 38px;
+}

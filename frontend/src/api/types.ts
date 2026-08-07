@@ -42,3 +42,13 @@ export interface UsageByDayResponse {
     avgRate: number | null
   }
 }
+
+export type UserRole = 'ADMIN' | 'USER'
+
+export interface AuthUser {
+  id: number
+  username: string
+  role: UserRole
+  mustChangePassword: boolean
+  createdAt: string
+}
