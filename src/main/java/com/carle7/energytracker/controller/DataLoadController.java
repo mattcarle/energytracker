@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -14,8 +15,9 @@ public class DataLoadController {
     private OctopusService octopusService;
 
     @PostMapping("/api/load/account")
-    public ResponseEntity<OctopusService.AccountLoadResult> loadAccountData() {
-        OctopusService.AccountLoadResult result = octopusService.loadAccountData();
+    public ResponseEntity<OctopusService.AccountLoadResult> loadAccountData(
+            @RequestParam(defaultValue = "false") boolean deleteAll) {
+        OctopusService.AccountLoadResult result = octopusService.loadAccountData(deleteAll);
         if (result.getError() != null) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(result);
         }
@@ -23,8 +25,9 @@ public class DataLoadController {
     }
 
     @PostMapping("/api/load/usage")
-    public ResponseEntity<OctopusService.UsageLoadResult> loadUsageData() {
-        OctopusService.UsageLoadResult result = octopusService.loadUsageData();
+    public ResponseEntity<OctopusService.UsageLoadResult> loadUsageData(
+            @RequestParam(defaultValue = "false") boolean deleteAll) {
+        OctopusService.UsageLoadResult result = octopusService.loadUsageData(deleteAll);
         if (result.getError() != null) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(result);
         }

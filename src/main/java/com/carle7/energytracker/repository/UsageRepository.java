@@ -23,7 +23,7 @@ public interface UsageRepository extends JpaRepository<Usage, Long> {
                    COUNT(*) AS intervalCount,
                    SUM(u.consumption) AS kwh,
                    SUM(u.consumption * r.value_inc_vat / 100) AS cost,
-                   SUM(u.consumption * r.value_inc_vat / 100) / SUM(u.consumption) AS avgRate
+                   SUM(u.consumption * r.value_inc_vat / 100) / NULLIF(SUM(u.consumption), 0) AS avgRate
             FROM meter_point mp
                      JOIN agreement a ON mp.id = a.meter_point_id
                      JOIN usage u ON mp.mpan = u.mpan
@@ -49,7 +49,7 @@ public interface UsageRepository extends JpaRepository<Usage, Long> {
                    COUNT(*) AS intervalCount,
                    SUM(u.consumption) AS kwh,
                    SUM(u.consumption * r.value_inc_vat / 100) AS cost,
-                   SUM(u.consumption * r.value_inc_vat / 100) / SUM(u.consumption) AS avgRate
+                   SUM(u.consumption * r.value_inc_vat / 100) / NULLIF(SUM(u.consumption), 0) AS avgRate
             FROM meter_point mp
                      JOIN agreement a ON mp.id = a.meter_point_id
                      JOIN usage u ON mp.mpan = u.mpan
@@ -75,7 +75,7 @@ public interface UsageRepository extends JpaRepository<Usage, Long> {
                    COUNT(*) AS intervalCount,
                    SUM(u.consumption) AS kwh,
                    SUM(u.consumption * r.value_inc_vat / 100) AS cost,
-                   SUM(u.consumption * r.value_inc_vat / 100) / SUM(u.consumption) AS avgRate
+                   SUM(u.consumption * r.value_inc_vat / 100) / NULLIF(SUM(u.consumption), 0) AS avgRate
             FROM meter_point mp
                      JOIN agreement a ON mp.id = a.meter_point_id
                      JOIN usage u ON mp.mpan = u.mpan

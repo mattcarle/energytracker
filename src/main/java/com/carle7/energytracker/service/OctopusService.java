@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -78,18 +79,27 @@ public class OctopusService {
 
     private static final ZoneId LONDON_ZONE = ZoneId.of("Europe/London");
 
+    // Octopus reports gas consumption in cubic metres; convert to kWh using the standard Ofgem
+    // formula. The calorific value is a fixed approximation (Ofgem's own consumer-tool placeholder)
+    // since the actual daily, region-specific value isn't available from the consumption API.
+    private static final BigDecimal GAS_VOLUME_CORRECTION_FACTOR = new BigDecimal("1.02264");
+    private static final BigDecimal GAS_CALORIFIC_VALUE_MJ_PER_M3 = new BigDecimal("40.0");
+    private static final BigDecimal MEGAJOULES_PER_KWH = new BigDecimal("3.6");
+
     @Transactional
-    public AccountLoadResult loadAccountData() {
+    public AccountLoadResult loadAccountData(boolean deleteAll) {
         AccountLoadResult result = new AccountLoadResult();
         try {
-            // Clear existing data before reloading from Octopus API. Order matters because of FK constraints.
-            unitRateByHalfHourRepository.deleteAllInBatch();
-            standingChargeByDayRepository.deleteAllInBatch();
-            unitRateRepository.deleteAllInBatch();
-            standingChargeRepository.deleteAllInBatch();
-            agreementRepository.deleteAllInBatch();
-            meterRepository.deleteAllInBatch();
-            meterPointRepository.deleteAllInBatch();
+            if (deleteAll) {
+                // Order matters because of FK constraints.
+                unitRateByHalfHourRepository.deleteAllInBatch();
+                standingChargeByDayRepository.deleteAllInBatch();
+                unitRateRepository.deleteAllInBatch();
+                standingChargeRepository.deleteAllInBatch();
+                agreementRepository.deleteAllInBatch();
+                meterRepository.deleteAllInBatch();
+                meterPointRepository.deleteAllInBatch();
+            }
 
             AccountResponse accountResponse = octopusApiService.fetchAccountData();
             if (accountResponse == null) {
@@ -316,9 +326,13 @@ public class OctopusService {
         return OffsetDateTime.parse(dateTimeString).toLocalDateTime();
     }
 
-    public UsageLoadResult loadUsageData() {
+    public UsageLoadResult loadUsageData(boolean deleteAll) {
         UsageLoadResult result = new UsageLoadResult();
         try {
+            if (deleteAll) {
+                usageRepository.deleteAllInBatch();
+            }
+
             LocalDateTime periodFrom = usageRepository.findFirstByOrderByIntervalToDesc()
                     .map(Usage::getIntervalTo)
                     .or(() -> agreementRepository.findFirstByOrderByValidFromAsc().map(Agreement::getValidFrom))
@@ -349,7 +363,7 @@ public class OctopusService {
                                 .map(data -> new Usage(
                                         data.getIntervalStartAsLocalDateTime(),
                                         data.getIntervalEndAsLocalDateTime(),
-                                        new BigDecimal(data.consumption),
+                                        toKwh(meterPoint.getMeterType(), data.consumption),
                                         meterPoint.getMpan()
                                 ))
                                 .toList();
@@ -365,6 +379,19 @@ public class OctopusService {
             result.setError(e.getMessage());
         }
         return result;
+    }
+
+    /**
+     * Gas consumption arrives from Octopus in cubic metres; electricity consumption is already kWh.
+     */
+    private BigDecimal toKwh(String meterType, double consumption) {
+        BigDecimal raw = BigDecimal.valueOf(consumption);
+        if (!"GAS".equals(meterType)) {
+            return raw;
+        }
+        return raw.multiply(GAS_VOLUME_CORRECTION_FACTOR)
+                .multiply(GAS_CALORIFIC_VALUE_MJ_PER_M3)
+                .divide(MEGAJOULES_PER_KWH, 4, RoundingMode.HALF_UP);
     }
 
     public static class UsageLoadResult {
