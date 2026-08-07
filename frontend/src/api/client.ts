@@ -1,4 +1,4 @@
-import type { Agreement, Meter, MeterPoint } from './types'
+import type { Agreement, Meter, MeterPoint, UsageByDayResponse } from './types'
 
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(path)
@@ -18,4 +18,9 @@ export function getMeters(): Promise<Meter[]> {
 
 export function getAgreements(): Promise<Agreement[]> {
   return getJson('/api/agreements')
+}
+
+export function getUsageByDay(mpan: string, fromDate: string, toDate: string): Promise<UsageByDayResponse> {
+  const params = new URLSearchParams({ mpan, fromDate, toDate })
+  return getJson(`/api/usage/by-day?${params.toString()}`)
 }

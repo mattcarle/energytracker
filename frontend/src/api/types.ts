@@ -21,3 +21,24 @@ export interface Agreement {
   meterPointId: number
   createdAt: string
 }
+
+export interface UsageDayAggregate {
+  mpan: string
+  meterType: string
+  isExport: boolean
+  usageDate: string
+  intervalCount: number
+  kwh: number
+  cost: number
+  avgRate: number | null
+}
+
+export interface UsageByDayResponse {
+  days: UsageDayAggregate[]
+  totals: {
+    intervalCount: number
+    kwh: number
+    cost: number
+    avgRate: number | null
+  }
+}

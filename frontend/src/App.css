@@ -1,0 +1,44 @@
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100svh;
+}
+
+.app-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.app-nav__title {
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.app-nav__links {
+  display: flex;
+  gap: 8px;
+}
+
+.app-nav__links button {
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.app-nav__links button:hover {
+  color: var(--text-h);
+}
+
+.app-nav__links button.active {
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+}
