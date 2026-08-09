@@ -67,6 +67,90 @@
   word-break: break-word;
 }
 
+.manage-data__section {
+  margin-top: 40px;
+}
+
+.manage-data__section h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.manage-data__section-intro {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.day-night-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.day-night-table th,
+.day-night-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.day-night-table th {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.day-night-table td {
+  color: var(--text-h);
+}
+
+.day-night-table__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.day-night-table__actions button {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.day-night-table__actions button.day-night-table__delete {
+  border-color: rgba(214, 69, 69, 0.5);
+  background: rgba(214, 69, 69, 0.1);
+  color: #d64545;
+}
+
+.day-night-modal__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text);
+  margin-bottom: 16px;
+}
+
+.day-night-modal__field:last-child {
+  margin-bottom: 0;
+}
+
+.day-night-modal__field select {
+  font: inherit;
+  font-size: 15px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+}
+
 .manage-data__actions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

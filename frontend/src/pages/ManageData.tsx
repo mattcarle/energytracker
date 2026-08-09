@@ -1,17 +1,22 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   checkDataIntegrity,
+  createDayAndNightTariff,
+  deleteDayAndNightTariff,
   getAgreements,
+  getDayAndNightTariffStatus,
   getMeterPoints,
   getMeters,
   getUsageDateRanges,
   loadAccountData,
   loadUsageData,
+  updateDayAndNightTariff,
 } from '../api/client'
 import type {
   AccountLoadResult,
   Agreement,
   DataIntegrityReport,
+  DayAndNightTariffStatus,
   Meter,
   MeterPoint,
   UsageDateRange,
@@ -19,6 +24,25 @@ import type {
 } from '../api/types'
 import Modal from '../components/Modal'
 import './ManageData.css'
+
+// LocalTime values ("HH:mm:ss") for every half-hourly interval in a day, matching the
+// half-hourly unit rate granularity these valid-from times need to align with.
+const HALF_HOUR_OPTIONS = Array.from({ length: 48 }, (_, i) => {
+  const hours = String(Math.floor(i / 2)).padStart(2, '0')
+  const minutes = i % 2 === 0 ? '00' : '30'
+  return `${hours}:${minutes}:00`
+})
+
+function formatTime(value: string): string {
+  return value.slice(0, 5)
+}
+
+interface DayAndNightEdit {
+  id: number | null
+  tariffCode: string
+  dayRateValidFrom: string
+  nightRateValidFrom: string
+}
 
 interface MeterPointDetails {
   meterPoint: MeterPoint
@@ -72,10 +96,17 @@ export default function ManageData() {
   const [loadingIntegrity, setLoadingIntegrity] = useState(false)
   const [integrityReport, setIntegrityReport] = useState<DataIntegrityReport | null>(null)
 
+  const [dayAndNightTariffs, setDayAndNightTariffs] = useState<DayAndNightTariffStatus[] | null>(null)
+  const [editingTariff, setEditingTariff] = useState<DayAndNightEdit | null>(null)
+  const [savingTariff, setSavingTariff] = useState(false)
+  const [tariffActionError, setTariffActionError] = useState<string | null>(null)
+  const [deleteTariffTarget, setDeleteTariffTarget] = useState<DayAndNightTariffStatus | null>(null)
+  const [deletingTariff, setDeletingTariff] = useState(false)
+
   const refresh = useCallback(() => {
     setError(null)
-    Promise.all([getMeterPoints(), getMeters(), getAgreements(), getUsageDateRanges()])
-      .then(([meterPoints, meters, agreements, ranges]) => {
+    Promise.all([getMeterPoints(), getMeters(), getAgreements(), getUsageDateRanges(), getDayAndNightTariffStatus()])
+      .then(([meterPoints, meters, agreements, ranges, tariffStatuses]) => {
         const combined = meterPoints.map((meterPoint) => ({
           meterPoint,
           meters: meters.filter((meter) => meter.meterPointId === meterPoint.id),
@@ -85,6 +116,7 @@ export default function ManageData() {
         }))
         setDetails(combined)
         setDateRanges(new Map(ranges.map((r) => [r.mpan, r])))
+        setDayAndNightTariffs(tariffStatuses)
       })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : 'Failed to load account details')
@@ -143,6 +175,45 @@ export default function ManageData() {
       .then(setIntegrityReport)
       .catch((err: unknown) => setActionError(err instanceof Error ? err.message : 'Failed to check data integrity'))
       .finally(() => setLoadingIntegrity(false))
+  }
+
+  function openTariffModal(tariff: DayAndNightTariffStatus) {
+    setTariffActionError(null)
+    setEditingTariff({
+      id: tariff.id,
+      tariffCode: tariff.tariffCode,
+      dayRateValidFrom: tariff.dayRateValidFrom ?? HALF_HOUR_OPTIONS[0],
+      nightRateValidFrom: tariff.nightRateValidFrom ?? HALF_HOUR_OPTIONS[0],
+    })
+  }
+
+  function handleSaveTariff() {
+    if (!editingTariff) return
+    setTariffActionError(null)
+    setSavingTariff(true)
+    const save = editingTariff.id
+      ? updateDayAndNightTariff(editingTariff.id, editingTariff.tariffCode, editingTariff.dayRateValidFrom, editingTariff.nightRateValidFrom)
+      : createDayAndNightTariff(editingTariff.tariffCode, editingTariff.dayRateValidFrom, editingTariff.nightRateValidFrom)
+    save
+      .then(() => {
+        setEditingTariff(null)
+        refresh()
+      })
+      .catch((err: unknown) => setTariffActionError(err instanceof Error ? err.message : 'Failed to save tariff'))
+      .finally(() => setSavingTariff(false))
+  }
+
+  function handleDeleteTariff() {
+    if (deleteTariffTarget?.id == null) return
+    setTariffActionError(null)
+    setDeletingTariff(true)
+    deleteDayAndNightTariff(deleteTariffTarget.id)
+      .then(() => {
+        setDeleteTariffTarget(null)
+        refresh()
+      })
+      .catch((err: unknown) => setTariffActionError(err instanceof Error ? err.message : 'Failed to delete tariff'))
+      .finally(() => setDeletingTariff(false))
   }
 
   return (
@@ -250,6 +321,59 @@ export default function ManageData() {
 
       {actionError && <p className="manage-data__error">{actionError}</p>}
 
+      <section className="manage-data__section">
+        <h2>Day and Night Tariffs</h2>
+        <p className="manage-data__section-intro">
+          Some tariffs bill electricity at separate Day and Night rates, but Octopus doesn&rsquo;t report when
+          each rate applies - set the valid-from times here so usage can be split correctly.
+        </p>
+
+        {!error && !dayAndNightTariffs && <p>Loading tariffs…</p>}
+        {dayAndNightTariffs && dayAndNightTariffs.length === 0 && <p>No tariffs require Day/Night rates.</p>}
+
+        {dayAndNightTariffs && dayAndNightTariffs.length > 0 && (
+          <table className="day-night-table">
+            <thead>
+              <tr>
+                <th>Tariff Code</th>
+                <th>Day Rate Valid From</th>
+                <th>Night Rate Valid From</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {dayAndNightTariffs.map((tariff) => (
+                <tr key={tariff.tariffCode}>
+                  <td>{tariff.tariffCode}</td>
+                  <td>{tariff.dayRateValidFrom ? formatTime(tariff.dayRateValidFrom) : '—'}</td>
+                  <td>{tariff.nightRateValidFrom ? formatTime(tariff.nightRateValidFrom) : '—'}</td>
+                  <td className="day-night-table__actions">
+                    {tariff.id === null ? (
+                      <button type="button" onClick={() => openTariffModal(tariff)}>
+                        Add
+                      </button>
+                    ) : (
+                      <>
+                        <button type="button" onClick={() => openTariffModal(tariff)}>
+                          Update
+                        </button>
+                        <button
+                          type="button"
+                          className="day-night-table__delete"
+                          onClick={() => setDeleteTariffTarget(tariff)}
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
       {confirmTarget && (
         <Modal
           title="Are you sure?"
@@ -312,6 +436,92 @@ export default function ManageData() {
               <dd>{summary.result.utcToLocalCount}</dd>
             </dl>
           )}
+        </Modal>
+      )}
+
+      {editingTariff && (
+        <Modal
+          title={`${editingTariff.id === null ? 'Add' : 'Update'} ${editingTariff.tariffCode}`}
+          onDismiss={() => setEditingTariff(null)}
+          actions={
+            <>
+              <button
+                type="button"
+                className="modal__button--secondary"
+                onClick={() => setEditingTariff(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="modal__button--primary"
+                onClick={handleSaveTariff}
+                disabled={savingTariff}
+              >
+                {savingTariff ? 'Saving…' : editingTariff.id === null ? 'Add' : 'Update'}
+              </button>
+            </>
+          }
+        >
+          {tariffActionError && <p className="modal__error">{tariffActionError}</p>}
+          <label className="day-night-modal__field">
+            Day Rate Valid From
+            <select
+              value={editingTariff.dayRateValidFrom}
+              onChange={(e) => setEditingTariff({ ...editingTariff, dayRateValidFrom: e.target.value })}
+            >
+              {HALF_HOUR_OPTIONS.map((time) => (
+                <option key={time} value={time}>
+                  {formatTime(time)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="day-night-modal__field">
+            Night Rate Valid From
+            <select
+              value={editingTariff.nightRateValidFrom}
+              onChange={(e) => setEditingTariff({ ...editingTariff, nightRateValidFrom: e.target.value })}
+            >
+              {HALF_HOUR_OPTIONS.map((time) => (
+                <option key={time} value={time}>
+                  {formatTime(time)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </Modal>
+      )}
+
+      {deleteTariffTarget && (
+        <Modal
+          title="Delete Day and Night tariff?"
+          onDismiss={() => setDeleteTariffTarget(null)}
+          actions={
+            <>
+              <button
+                type="button"
+                className="modal__button--secondary"
+                onClick={() => setDeleteTariffTarget(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="modal__button--danger"
+                onClick={handleDeleteTariff}
+                disabled={deletingTariff}
+              >
+                {deletingTariff ? 'Deleting…' : 'Delete'}
+              </button>
+            </>
+          }
+        >
+          {tariffActionError && <p className="modal__error">{tariffActionError}</p>}
+          <p>
+            This will remove the configured Day/Night valid-from times for{' '}
+            <strong>{deleteTariffTarget.tariffCode}</strong>.
+          </p>
         </Modal>
       )}
 

@@ -3,6 +3,7 @@ import type {
   Agreement,
   AuthUser,
   DataIntegrityReport,
+  DayAndNightTariffStatus,
   Meter,
   MeterPoint,
   SetupResult,
@@ -91,6 +92,37 @@ export function loadUsageData(deleteAll: boolean): Promise<UsageLoadResult> {
 
 export function checkDataIntegrity(): Promise<DataIntegrityReport> {
   return getJson('/api/data-integrity/check')
+}
+
+export function getDayAndNightTariffStatus(): Promise<DayAndNightTariffStatus[]> {
+  return getJson('/api/day-and-night-tariffs/status')
+}
+
+export function createDayAndNightTariff(
+  tariffCode: string,
+  dayRateValidFrom: string,
+  nightRateValidFrom: string,
+): Promise<DayAndNightTariffStatus> {
+  return request('/api/day-and-night-tariffs', {
+    method: 'POST',
+    body: JSON.stringify({ tariffCode, dayRateValidFrom, nightRateValidFrom }),
+  })
+}
+
+export function updateDayAndNightTariff(
+  id: number,
+  tariffCode: string,
+  dayRateValidFrom: string,
+  nightRateValidFrom: string,
+): Promise<DayAndNightTariffStatus> {
+  return request(`/api/day-and-night-tariffs/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ tariffCode, dayRateValidFrom, nightRateValidFrom }),
+  })
+}
+
+export function deleteDayAndNightTariff(id: number): Promise<void> {
+  return request(`/api/day-and-night-tariffs/${id}`, { method: 'DELETE' })
 }
 
 export function getStandingChargesByDay(

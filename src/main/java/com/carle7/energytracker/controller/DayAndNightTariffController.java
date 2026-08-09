@@ -1,6 +1,8 @@
 package com.carle7.energytracker.controller;
 
+import com.carle7.energytracker.dto.DayAndNightTariffStatus;
 import com.carle7.energytracker.model.DayAndNightTariff;
+import com.carle7.energytracker.repository.AgreementRepository;
 import com.carle7.energytracker.repository.DayAndNightTariffRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -8,6 +10,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/day-and-night-tariffs")
@@ -16,9 +21,32 @@ public class DayAndNightTariffController {
     @Autowired
     private DayAndNightTariffRepository dayAndNightTariffRepository;
 
+    @Autowired
+    private AgreementRepository agreementRepository;
+
     @GetMapping
     public List<DayAndNightTariff> getAll() {
         return dayAndNightTariffRepository.findAll();
+    }
+
+    // Combines the tariff codes that actually have DAY/NIGHT unit rates (found by inspecting
+    // agreements/unit rates, since the Octopus API gives no indication of which tariffs split
+    // by time of day) with whatever valid-from times have been configured for them so far, so
+    // the UI can show every tariff needing configuration alongside its current state.
+    @GetMapping("/status")
+    public List<DayAndNightTariffStatus> getStatus() {
+        List<String> tariffCodes = agreementRepository.findTariffCodesRequiringDayAndNightRates();
+        Map<String, DayAndNightTariff> existingByTariffCode = dayAndNightTariffRepository.findAll().stream()
+                .collect(Collectors.toMap(DayAndNightTariff::getTariffCode, Function.identity()));
+
+        return tariffCodes.stream()
+                .map(tariffCode -> {
+                    DayAndNightTariff existing = existingByTariffCode.get(tariffCode);
+                    return existing == null
+                            ? new DayAndNightTariffStatus(null, tariffCode, null, null)
+                            : new DayAndNightTariffStatus(existing.getId(), tariffCode, existing.getDayRateValidFrom(), existing.getNightRateValidFrom());
+                })
+                .toList();
     }
 
     @GetMapping("/{id}")

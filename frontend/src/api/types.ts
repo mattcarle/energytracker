@@ -110,3 +110,10 @@ export interface MpanIntegrityReport {
 export interface DataIntegrityReport {
   mpans: MpanIntegrityReport[]
 }
+
+export interface DayAndNightTariffStatus {
+  id: number | null
+  tariffCode: string
+  dayRateValidFrom: string | null
+  nightRateValidFrom: string | null
+}
