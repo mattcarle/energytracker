@@ -1,4 +1,16 @@
-import type { Agreement, AuthUser, Meter, MeterPoint, SetupResult, UsageByDayResponse, UserRole } from './types'
+import type {
+  AccountLoadResult,
+  Agreement,
+  AuthUser,
+  Meter,
+  MeterPoint,
+  SetupResult,
+  StandingChargeByDayEntry,
+  UsageByDayResponse,
+  UsageDateRange,
+  UsageLoadResult,
+  UserRole,
+} from './types'
 
 export class ApiError extends Error {
   status: number
@@ -62,6 +74,27 @@ export function getAgreements(): Promise<Agreement[]> {
 export function getUsageByDay(mpan: string, fromDate: string, toDate: string): Promise<UsageByDayResponse> {
   const params = new URLSearchParams({ mpan, fromDate, toDate })
   return getJson(`/api/usage/by-day?${params.toString()}`)
+}
+
+export function getUsageDateRanges(): Promise<UsageDateRange[]> {
+  return getJson('/api/usage/date-range')
+}
+
+export function loadAccountData(deleteAll: boolean): Promise<AccountLoadResult> {
+  return request(`/api/load/account?deleteAll=${deleteAll}`, { method: 'POST' })
+}
+
+export function loadUsageData(deleteAll: boolean): Promise<UsageLoadResult> {
+  return request(`/api/load/usage?deleteAll=${deleteAll}`, { method: 'POST' })
+}
+
+export function getStandingChargesByDay(
+  mpan: string,
+  fromDate: string,
+  toDate: string,
+): Promise<StandingChargeByDayEntry[]> {
+  const params = new URLSearchParams({ mpan, fromDate, toDate })
+  return getJson(`/api/standing-charges/by-day?${params.toString()}`)
 }
 
 export function getSetupStatus(): Promise<{ setupRequired: boolean }> {

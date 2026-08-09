@@ -43,6 +43,17 @@ export interface UsageByDayResponse {
   }
 }
 
+export interface StandingChargeByDayEntry {
+  chargeDate: string
+  amount: number
+}
+
+export interface UsageDateRange {
+  mpan: string
+  earliest: string
+  latest: string
+}
+
 export type UserRole = 'ADMIN' | 'USER'
 
 export interface AuthUser {

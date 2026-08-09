@@ -4,6 +4,7 @@ import com.carle7.energytracker.repository.UsageAggregateProjection;
 import com.carle7.energytracker.repository.UsageByDayProjection;
 import com.carle7.energytracker.repository.UsageByMonthProjection;
 import com.carle7.energytracker.repository.UsageByYearProjection;
+import com.carle7.energytracker.repository.UsageDateRangeProjection;
 import com.carle7.energytracker.repository.UsageRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,6 +23,11 @@ public class UsageController {
 
     @Autowired
     private UsageRepository usageRepository;
+
+    @GetMapping("/api/usage/date-range")
+    public List<UsageDateRangeProjection> getUsageDateRange() {
+        return usageRepository.findDateRangeByMpan();
+    }
 
     @GetMapping("/api/usage/by-day")
     public UsageByDayResponse getUsageByDay(

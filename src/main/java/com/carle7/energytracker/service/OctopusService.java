@@ -36,6 +36,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static java.util.Optional.ofNullable;
 
@@ -118,12 +119,21 @@ public class OctopusService {
                 collectMeterPointsFromProperty(property, meterPointsData);
             }
 
-            // Save all meter points
-            List<MeterPoint> meterPoints = meterPointsData.stream()
-                    .map(MeterPointData::meterPoint)
-                    .toList();
+            // Upsert meter points by mpan, so re-running without deleteAll updates existing rows
+            // instead of colliding with their unique constraint.
             long startTime = System.currentTimeMillis();
-            List<MeterPoint> savedMeterPoints = meterPointRepository.saveAll(meterPoints);
+            List<MeterPoint> savedMeterPoints = new ArrayList<>();
+            for (MeterPointData mpd : meterPointsData) {
+                MeterPoint incoming = mpd.meterPoint();
+                MeterPoint toSave = meterPointRepository.findByMpan(incoming.getMpan())
+                        .map(existing -> {
+                            existing.setIsExport(incoming.getIsExport());
+                            existing.setMeterType(incoming.getMeterType());
+                            return existing;
+                        })
+                        .orElse(incoming);
+                savedMeterPoints.add(meterPointRepository.save(toSave));
+            }
             long durationMs = System.currentTimeMillis() - startTime;
             logger.info("Saved {} meter point records in {} ms", savedMeterPoints.size(), durationMs);
             result.setMeterPointCount(savedMeterPoints.size());
@@ -133,38 +143,44 @@ public class OctopusService {
                 meterPointsData.get(i).meterPoint().setId(savedMeterPoints.get(i).getId());
             }
 
-            // Save meters, one per physical meter on each meter point
-            List<Meter> meters = new ArrayList<>();
+            // Upsert meters, one per physical meter on each meter point; skip ones already on record.
+            startTime = System.currentTimeMillis();
+            List<Meter> savedMeters = new ArrayList<>();
             for (MeterPointData mpd : meterPointsData) {
                 for (MeterDetailDto meterDto : mpd.meterDtos()) {
-                    meters.add(new Meter(meterDto.serial_number, mpd.meterPoint().getId()));
+                    Meter meter = meterRepository
+                            .findByMeterPointIdAndSerialNumber(mpd.meterPoint().getId(), meterDto.serial_number)
+                            .orElseGet(() -> meterRepository.save(new Meter(meterDto.serial_number, mpd.meterPoint().getId())));
+                    savedMeters.add(meter);
                 }
             }
-            startTime = System.currentTimeMillis();
-            List<Meter> savedMeters = meterRepository.saveAll(meters);
             durationMs = System.currentTimeMillis() - startTime;
             logger.info("Saved {} meter records in {} ms", savedMeters.size(), durationMs);
             result.setMeterCount(savedMeters.size());
 
-            // Collect agreements per meter point, deduplicating by tariff_code/valid_from within each meter point
-            List<Agreement> agreements = new ArrayList<>();
+            // Upsert agreements per meter point (deduplicating by tariff_code/valid_from within each
+            // meter point); an existing agreement only has its valid_to refreshed, since an
+            // open-ended agreement (valid_to null) becomes closed once superseded.
+            startTime = System.currentTimeMillis();
+            List<Agreement> savedAgreements = new ArrayList<>();
             for (MeterPointData mpd : meterPointsData) {
                 var uniqueAgreementDtos = new java.util.LinkedHashMap<String, AgreementDetailDto>();
                 for (AgreementDetailDto dto : mpd.agreementDtos()) {
                     uniqueAgreementDtos.putIfAbsent(dto.tariff_code + "|" + dto.valid_from, dto);
                 }
                 for (AgreementDetailDto dto : uniqueAgreementDtos.values()) {
-                    agreements.add(new Agreement(
-                            dto.tariff_code,
-                            parseDateTime(dto.valid_from),
-                            dto.valid_to != null ? parseDateTime(dto.valid_to) : null,
-                            mpd.meterPoint().getId()
-                    ));
+                    LocalDateTime validFrom = parseDateTime(dto.valid_from);
+                    LocalDateTime validTo = dto.valid_to != null ? parseDateTime(dto.valid_to) : null;
+                    Agreement toSave = agreementRepository
+                            .findByMeterPointIdAndTariffCodeAndValidFrom(mpd.meterPoint().getId(), dto.tariff_code, validFrom)
+                            .map(existing -> {
+                                existing.setValidTo(validTo);
+                                return existing;
+                            })
+                            .orElseGet(() -> new Agreement(dto.tariff_code, validFrom, validTo, mpd.meterPoint().getId()));
+                    savedAgreements.add(agreementRepository.save(toSave));
                 }
             }
-
-            startTime = System.currentTimeMillis();
-            List<Agreement> savedAgreements = agreementRepository.saveAll(agreements);
             durationMs = System.currentTimeMillis() - startTime;
             logger.info("Saved {} agreement records in {} ms", savedAgreements.size(), durationMs);
             result.setAgreementCount(savedAgreements.size());
@@ -175,35 +191,49 @@ public class OctopusService {
                 meterTypeByMeterPointId.put(mpd.meterPoint().getId(), mpd.meterPoint().getMeterType());
             }
 
-            // Load standing charges and unit rates for each agreement
+            // Load standing charges and unit rates for each agreement. Both are appended-only
+            // history (a past valid_from/payment_method/rate_type combination never changes), so a
+            // re-run only needs to insert whatever isn't already on record; the reported counts are
+            // the totals now held for the agreement, existing plus newly inserted.
             int standingChargeCount = 0;
             int unitRateCount = 0;
             for (Agreement agreement : savedAgreements) {
                 String meterType = meterTypeByMeterPointId.getOrDefault(agreement.getMeterPointId(), "ELEC");
 
-                var standingCharges = octopusApiService.fetchStandingCharges(agreement, meterType);
-                standingChargeRepository.saveAll(standingCharges);
-                standingChargeCount += standingCharges.size();
+                Set<String> existingStandingChargeKeys = standingChargeKeys(agreement.getId());
+                var newStandingCharges = octopusApiService.fetchStandingCharges(agreement, meterType).stream()
+                        .filter(sc -> !existingStandingChargeKeys.contains(standingChargeKey(sc)))
+                        .toList();
+                standingChargeRepository.saveAll(newStandingCharges);
+                standingChargeCount += existingStandingChargeKeys.size() + newStandingCharges.size();
 
                 // Check if this is a day-and-night tariff
                 boolean isDayAndNightTariff = dayAndNightTariffRepository
                         .findByTariffCode(agreement.getTariffCode())
                         .isPresent();
 
+                Set<String> existingUnitRateKeys = unitRateKeys(agreement.getId());
+
                 if (isDayAndNightTariff) {
                     // Load day and night rates from separate endpoints
-                    var dayRates = octopusApiService.fetchAllUnitRates(agreement, meterType, "day", "DAY");
+                    var dayRates = octopusApiService.fetchAllUnitRates(agreement, meterType, "day", "DAY").stream()
+                            .filter(r -> !existingUnitRateKeys.contains(unitRateKey(r)))
+                            .toList();
                     unitRateRepository.saveAll(dayRates);
                     unitRateCount += dayRates.size();
 
-                    var nightRates = octopusApiService.fetchAllUnitRates(agreement, meterType, "night", "NIGHT");
+                    var nightRates = octopusApiService.fetchAllUnitRates(agreement, meterType, "night", "NIGHT").stream()
+                            .filter(r -> !existingUnitRateKeys.contains(unitRateKey(r)))
+                            .toList();
                     unitRateRepository.saveAll(nightRates);
-                    unitRateCount += nightRates.size();
+                    unitRateCount += existingUnitRateKeys.size() + dayRates.size() + nightRates.size();
                 } else {
                     // Load standard rates
-                    var unitRates = octopusApiService.fetchAllUnitRates(agreement, meterType, "standard", "STANDARD");
+                    var unitRates = octopusApiService.fetchAllUnitRates(agreement, meterType, "standard", "STANDARD").stream()
+                            .filter(r -> !existingUnitRateKeys.contains(unitRateKey(r)))
+                            .toList();
                     unitRateRepository.saveAll(unitRates);
-                    unitRateCount += unitRates.size();
+                    unitRateCount += existingUnitRateKeys.size() + unitRates.size();
                 }
             }
             result.setStandingChargeCount(standingChargeCount);
@@ -326,6 +356,26 @@ public class OctopusService {
         return OffsetDateTime.parse(dateTimeString).toLocalDateTime();
     }
 
+    private Set<String> standingChargeKeys(Long agreementId) {
+        return standingChargeRepository.findByAgreementIdOrderByValidFrom(agreementId).stream()
+                .map(this::standingChargeKey)
+                .collect(java.util.stream.Collectors.toSet());
+    }
+
+    private String standingChargeKey(StandingCharge standingCharge) {
+        return standingCharge.getPaymentMethod() + "|" + standingCharge.getValidFrom();
+    }
+
+    private Set<String> unitRateKeys(Long agreementId) {
+        return unitRateRepository.findByAgreementIdOrderByValidFrom(agreementId).stream()
+                .map(this::unitRateKey)
+                .collect(java.util.stream.Collectors.toSet());
+    }
+
+    private String unitRateKey(UnitRate unitRate) {
+        return unitRate.getPaymentMethod() + "|" + unitRate.getValidFrom() + "|" + unitRate.getRateType();
+    }
+
     public UsageLoadResult loadUsageData(boolean deleteAll) {
         UsageLoadResult result = new UsageLoadResult();
         try {
@@ -426,6 +476,10 @@ public class OctopusService {
 
     @Transactional
     public int populateHalfHourlyUnitRates() {
+        // Fully derived from unit_rate, so it's always safe (and necessary, to stay idempotent
+        // across repeated loadAccountData calls) to recompute from scratch rather than upsert.
+        unitRateByHalfHourRepository.deleteAllInBatch();
+
         List<Agreement> agreements = agreementRepository.findAll();
         // Keyed by the same tuple as UNIT_RATE_BY_HALF_HOUR's unique constraint, so overlapping
         // source data (e.g. superseded unit_rate periods) can never produce a duplicate insert.
@@ -564,6 +618,10 @@ public class OctopusService {
      */
     @Transactional
     public int populateDailyStandingCharges() {
+        // Fully derived from standing_charge, so it's always safe (and necessary, to stay
+        // idempotent across repeated loadAccountData calls) to recompute from scratch rather than upsert.
+        standingChargeByDayRepository.deleteAllInBatch();
+
         List<Agreement> agreements = agreementRepository.findAll();
         // Keyed by the same tuple as STANDING_CHARGE_BY_DAY's unique constraint, so overlapping
         // source data (e.g. superseded standing_charge periods) can never produce a duplicate insert.

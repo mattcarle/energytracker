@@ -16,6 +16,15 @@ public interface UsageRepository extends JpaRepository<Usage, Long> {
     Optional<Usage> findFirstByOrderByIntervalToDesc();
 
     @Query(value = """
+            SELECT mpan AS mpan,
+                   MIN(interval_from) AS earliest,
+                   MAX(interval_to) AS latest
+            FROM usage
+            GROUP BY mpan
+            """, nativeQuery = true)
+    List<UsageDateRangeProjection> findDateRangeByMpan();
+
+    @Query(value = """
             SELECT mp.mpan AS mpan,
                    mp.meter_type AS meterType,
                    mp.is_export AS isExport,

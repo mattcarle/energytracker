@@ -1,0 +1,104 @@
+.usage-by-day {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 48px 24px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.usage-by-day__error {
+  color: #d64545;
+}
+
+.usage-by-day__controls {
+  display: flex;
+  gap: 20px;
+  margin: 24px 0;
+}
+
+.usage-by-day__controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.usage-by-day__controls select {
+  font: inherit;
+  font-size: 15px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+}
+
+.usage-by-day__mpan-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  margin-bottom: 16px;
+}
+
+.usage-by-day__mpan-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+.usage-by-day__mpan-toggle input {
+  cursor: pointer;
+}
+
+/* Horizontal scroll keeps the type size readable instead of squeezing many
+   grouped columns to fit the viewport. */
+.usage-by-day__table-wrap {
+  overflow-x: auto;
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.usage-by-day__table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.usage-by-day__table th,
+.usage-by-day__table td {
+  text-align: right;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.usage-by-day__date-col {
+  text-align: left;
+}
+
+.usage-by-day__table thead th {
+  color: var(--text);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+
+.usage-by-day__table thead tr:last-child th {
+  border-bottom: 2px solid var(--border);
+}
+
+.usage-by-day__group-start {
+  border-left: 2px solid var(--border);
+}
+
+.usage-by-day__total-row td {
+  font-weight: 600;
+  border-top: 2px solid var(--border);
+  color: var(--accent);
+}

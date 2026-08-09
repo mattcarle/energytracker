@@ -1,21 +1,21 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getCurrentUser, getSetupStatus, logout } from './api/client'
 import type { AuthUser } from './api/types'
-import AccountDetails from './pages/AccountDetails'
+import Admin from './pages/Admin'
 import ChangePassword from './pages/ChangePassword'
 import Login from './pages/Login'
 import Setup from './pages/Setup'
-import UsageByMonth from './pages/UsageByMonth'
+import UsageByDay from './pages/UsageByDay'
 import UserManagement from './pages/UserManagement'
 import './App.css'
 
-type Page = 'account' | 'usage' | 'users'
+type Page = 'admin' | 'usage' | 'users'
 type AuthPhase = 'loading' | 'setup' | 'login' | 'change-password' | 'authenticated'
 
 function App() {
   const [phase, setPhase] = useState<AuthPhase>('loading')
   const [user, setUser] = useState<AuthUser | null>(null)
-  const [page, setPage] = useState<Page>('account')
+  const [page, setPage] = useState<Page>('usage')
 
   const refreshAuth = useCallback(() => {
     setPhase('loading')
@@ -52,7 +52,7 @@ function App() {
   function handleLogout() {
     logout().finally(() => {
       setUser(null)
-      setPage('account')
+      setPage('usage')
       setPhase('login')
     })
   }
@@ -84,18 +84,20 @@ function App() {
         <div className="app-nav__links">
           <button
             type="button"
-            className={page === 'account' ? 'active' : ''}
-            onClick={() => setPage('account')}
-          >
-            Account details
-          </button>
-          <button
-            type="button"
             className={page === 'usage' ? 'active' : ''}
             onClick={() => setPage('usage')}
           >
             Usage
           </button>
+          {user?.role === 'ADMIN' && (
+            <button
+              type="button"
+              className={page === 'admin' ? 'active' : ''}
+              onClick={() => setPage('admin')}
+            >
+              Admin
+            </button>
+          )}
           {user?.role === 'ADMIN' && (
             <button
               type="button"
@@ -110,9 +112,9 @@ function App() {
           </button>
         </div>
       </nav>
-      {page === 'account' && <AccountDetails />}
-      {page === 'usage' && <UsageByMonth />}
-      {page === 'users' && user && <UserManagement currentUserId={user.id} />}
+      {page === 'admin' && user?.role === 'ADMIN' && <Admin />}
+      {page === 'usage' && <UsageByDay />}
+      {page === 'users' && user?.role === 'ADMIN' && <UserManagement currentUserId={user.id} />}
     </div>
   )
 }
