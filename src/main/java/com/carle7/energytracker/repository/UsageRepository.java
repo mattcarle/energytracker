@@ -28,7 +28,7 @@ public interface UsageRepository extends JpaRepository<Usage, Long> {
             SELECT mp.mpan AS mpan,
                    mp.meter_type AS meterType,
                    mp.is_export AS isExport,
-                   CAST(z.local_time AS DATE) AS usageDate,
+                   CAST(u.interval_from AS DATE) AS usageDate,
                    COUNT(*) AS intervalCount,
                    SUM(u.consumption) AS kwh,
                    SUM(u.consumption * r.value_inc_vat / 100) AS cost,
@@ -37,13 +37,12 @@ public interface UsageRepository extends JpaRepository<Usage, Long> {
                      JOIN agreement a ON mp.id = a.meter_point_id
                      JOIN usage u ON mp.mpan = u.mpan
                      JOIN unit_rate_by_half_hour r ON r.valid_from = u.interval_from AND r.agreement_id = a.id
-                     JOIN utc_to_local z ON u.interval_from = z.utc_time
             WHERE mp.mpan = :mpan
-              AND z.local_time >= :fromDate
-              AND z.local_time < :toDate
+              AND u.interval_from >= :fromDate
+              AND u.interval_from < :toDate
               AND r.payment_method IN (:paymentMethods)
-            GROUP BY mp.mpan, mp.meter_type, mp.is_export, CAST(z.local_time AS DATE)
-            ORDER BY CAST(z.local_time AS DATE)
+            GROUP BY mp.mpan, mp.meter_type, mp.is_export, CAST(u.interval_from AS DATE)
+            ORDER BY CAST(u.interval_from AS DATE)
             """, nativeQuery = true)
     List<UsageByDayProjection> findUsageByDay(@Param("mpan") String mpan,
                                                @Param("fromDate") LocalDate fromDate,
@@ -54,7 +53,7 @@ public interface UsageRepository extends JpaRepository<Usage, Long> {
             SELECT mp.mpan AS mpan,
                    mp.meter_type AS meterType,
                    mp.is_export AS isExport,
-                   CAST(DATE_TRUNC('MONTH', z.local_time) AS DATE) AS usageMonth,
+                   CAST(DATE_TRUNC('MONTH', u.interval_from) AS DATE) AS usageMonth,
                    COUNT(*) AS intervalCount,
                    SUM(u.consumption) AS kwh,
                    SUM(u.consumption * r.value_inc_vat / 100) AS cost,
@@ -63,13 +62,12 @@ public interface UsageRepository extends JpaRepository<Usage, Long> {
                      JOIN agreement a ON mp.id = a.meter_point_id
                      JOIN usage u ON mp.mpan = u.mpan
                      JOIN unit_rate_by_half_hour r ON r.valid_from = u.interval_from AND r.agreement_id = a.id
-                     JOIN utc_to_local z ON u.interval_from = z.utc_time
             WHERE mp.mpan = :mpan
-              AND z.local_time >= :fromDate
-              AND z.local_time < :toDate
+              AND u.interval_from >= :fromDate
+              AND u.interval_from < :toDate
               AND r.payment_method IN (:paymentMethods)
-            GROUP BY mp.mpan, mp.meter_type, mp.is_export, CAST(DATE_TRUNC('MONTH', z.local_time) AS DATE)
-            ORDER BY CAST(DATE_TRUNC('MONTH', z.local_time) AS DATE)
+            GROUP BY mp.mpan, mp.meter_type, mp.is_export, CAST(DATE_TRUNC('MONTH', u.interval_from) AS DATE)
+            ORDER BY CAST(DATE_TRUNC('MONTH', u.interval_from) AS DATE)
             """, nativeQuery = true)
     List<UsageByMonthProjection> findUsageByMonth(@Param("mpan") String mpan,
                                                    @Param("fromDate") LocalDate fromDate,
@@ -80,7 +78,7 @@ public interface UsageRepository extends JpaRepository<Usage, Long> {
             SELECT mp.mpan AS mpan,
                    mp.meter_type AS meterType,
                    mp.is_export AS isExport,
-                   CAST(DATE_TRUNC('YEAR', z.local_time) AS DATE) AS usageYear,
+                   CAST(DATE_TRUNC('YEAR', u.interval_from) AS DATE) AS usageYear,
                    COUNT(*) AS intervalCount,
                    SUM(u.consumption) AS kwh,
                    SUM(u.consumption * r.value_inc_vat / 100) AS cost,
@@ -89,13 +87,12 @@ public interface UsageRepository extends JpaRepository<Usage, Long> {
                      JOIN agreement a ON mp.id = a.meter_point_id
                      JOIN usage u ON mp.mpan = u.mpan
                      JOIN unit_rate_by_half_hour r ON r.valid_from = u.interval_from AND r.agreement_id = a.id
-                     JOIN utc_to_local z ON u.interval_from = z.utc_time
             WHERE mp.mpan = :mpan
-              AND z.local_time >= :fromDate
-              AND z.local_time < :toDate
+              AND u.interval_from >= :fromDate
+              AND u.interval_from < :toDate
               AND r.payment_method IN (:paymentMethods)
-            GROUP BY mp.mpan, mp.meter_type, mp.is_export, CAST(DATE_TRUNC('YEAR', z.local_time) AS DATE)
-            ORDER BY CAST(DATE_TRUNC('YEAR', z.local_time) AS DATE)
+            GROUP BY mp.mpan, mp.meter_type, mp.is_export, CAST(DATE_TRUNC('YEAR', u.interval_from) AS DATE)
+            ORDER BY CAST(DATE_TRUNC('YEAR', u.interval_from) AS DATE)
             """, nativeQuery = true)
     List<UsageByYearProjection> findUsageByYear(@Param("mpan") String mpan,
                                                  @Param("fromDate") LocalDate fromDate,
