@@ -148,12 +148,18 @@ export default function UsageByDay() {
             const row = rowByDate.get(day.usageDate)
             if (!row) continue
             const stdChg = stdChgByDate.get(day.usageDate) ?? 0
+            // Exported energy earns money rather than costing it, so it's shown as negative
+            // usage/cost - this makes the TOTAL column a genuine net figure, going negative
+            // on a day export outweighs import.
+            const sign = day.isExport ? -1 : 1
+            const kwh = day.kwh * sign
+            const usageCost = day.cost * sign
             row.byMpan[mpan] = {
-              kwh: day.kwh,
+              kwh,
               avgRate: day.avgRate,
-              usageCost: day.cost,
+              usageCost,
               stdChg,
-              total: day.cost + stdChg,
+              total: usageCost + stdChg,
             }
           }
 
