@@ -51,11 +51,6 @@ function daysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate()
 }
 
-function todayDateString(): string {
-  const now = new Date()
-  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
-}
-
 function meterPointLabel(meterPoint: MeterPoint): string {
   if (meterPoint.meterType === 'GAS') return 'Gas'
   return meterPoint.isExport ? 'Electricity (Export)' : 'Electricity (Import)'
@@ -124,7 +119,6 @@ export default function UsageByDay() {
     const fromDate = firstOfMonth(year, month)
     const toDate = firstOfNextMonth(year, month)
     const totalDays = daysInMonth(year, month)
-    const today = todayDateString()
 
     Promise.all(
       meterPoints.map((meterPoint) =>
@@ -170,13 +164,19 @@ export default function UsageByDay() {
             if (!row || row.byMpan[mpan]) continue
             row.byMpan[mpan] = { kwh: 0, avgRate: null, usageCost: 0, stdChg: amount, total: amount }
           }
-        }
 
-        // A day that hasn't happened yet can't have accrued a standing charge.
-        for (const row of rowByDate.values()) {
-          if (row.date <= today) continue
-          for (const mpan of Object.keys(row.byMpan)) {
+          // Standing charges are typically known in advance for the whole agreement, but
+          // usage data can lag behind today (e.g. a smart meter reading not in yet), so only
+          // treat a day as "happened" for this MPAN up to the latest day we have usage data
+          // for, not simply up to today. No usage data at all means no day has happened yet.
+          const latestUsageDate = usageDays.reduce<string | null>(
+            (latest, day) => (latest === null || day.usageDate > latest ? day.usageDate : latest),
+            null,
+          )
+          for (const row of rowByDate.values()) {
+            if (latestUsageDate !== null && row.date <= latestUsageDate) continue
             const f = row.byMpan[mpan]
+            if (!f) continue
             row.byMpan[mpan] = { ...f, stdChg: 0, total: f.usageCost }
           }
         }
