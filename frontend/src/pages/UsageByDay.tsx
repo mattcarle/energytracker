@@ -220,6 +220,13 @@ export default function UsageByDay() {
     }
   }, [year, month, meterPoints])
 
+  // The static range covers typical browsing, but the prev/next month buttons can walk the
+  // year outside it - keep the dropdown in sync with wherever navigation has actually landed.
+  const yearOptions = useMemo(() => {
+    if (YEAR_OPTIONS.includes(year)) return YEAR_OPTIONS
+    return [...YEAR_OPTIONS, year].sort((a, b) => b - a)
+  }, [year])
+
   const includedMeterPoints = useMemo(
     () => meterPoints?.filter((mp) => selectedMpans?.has(mp.mpan)) ?? [],
     [meterPoints, selectedMpans],
@@ -255,6 +262,24 @@ export default function UsageByDay() {
     return { kwh, total }
   }
 
+  function goToPreviousMonth() {
+    if (month === 1) {
+      setYear((y) => y - 1)
+      setMonth(12)
+    } else {
+      setMonth((m) => m - 1)
+    }
+  }
+
+  function goToNextMonth() {
+    if (month === 12) {
+      setYear((y) => y + 1)
+      setMonth(1)
+    } else {
+      setMonth((m) => m + 1)
+    }
+  }
+
   function toggleMpan(mpan: string) {
     setSelectedMpans((current) => {
       const next = new Set(current)
@@ -285,13 +310,21 @@ export default function UsageByDay() {
         <label>
           Year
           <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
-            {YEAR_OPTIONS.map((y) => (
+            {yearOptions.map((y) => (
               <option key={y} value={y}>
                 {y}
               </option>
             ))}
           </select>
         </label>
+        <div className="usage-by-day__month-nav">
+          <button type="button" onClick={goToPreviousMonth} aria-label="Previous month">
+            &larr;
+          </button>
+          <button type="button" onClick={goToNextMonth} aria-label="Next month">
+            &rarr;
+          </button>
+        </div>
       </div>
 
       {meterPoints && meterPoints.length > 0 && (

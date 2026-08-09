@@ -41,6 +41,28 @@
   color: var(--text-h);
 }
 
+.usage-by-day__month-nav {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.usage-by-day__month-nav button {
+  font: inherit;
+  font-size: 15px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+.usage-by-day__month-nav button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .usage-by-day__mpan-toggles {
   display: flex;
   flex-wrap: wrap;
