@@ -2,9 +2,14 @@
   width: 100%;
   max-width: 1600px;
   margin: 0 auto;
-  padding: 48px 24px;
+  padding: 20px 24px 48px;
   box-sizing: border-box;
   text-align: left;
+}
+
+.usage-by-day h1 {
+  font-size: 26px;
+  margin: 0 0 16px;
 }
 
 .usage-by-day__error {
@@ -19,8 +24,9 @@
 
 .usage-by-day__controls label {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
   font-size: 14px;
   color: var(--text);
 }
@@ -55,10 +61,12 @@
   cursor: pointer;
 }
 
-/* Horizontal scroll is a fallback for narrow viewports; column width/typeface below are
-   trimmed so two MPANs plus TOTAL fit without it on a typical laptop-width screen. */
+/* Bounded height + vertical scroll keeps the header/footer and ~10 body rows on screen
+   together on a laptop display; horizontal scroll is a fallback for narrow viewports, with
+   column width/typeface trimmed below so two MPANs plus TOTAL fit without it by default. */
 .usage-by-day__table-wrap {
-  overflow-x: auto;
+  overflow: auto;
+  max-height: 440px;
   margin-top: 8px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -74,7 +82,7 @@
 .usage-by-day__table th,
 .usage-by-day__table td {
   text-align: right;
-  padding: 5px 6px;
+  padding: 4px 5px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -82,8 +90,8 @@
   white-space: nowrap;
 }
 
-/* Headers wrap onto multiple lines so a long label (e.g. "Avg Rate (£/kWh)") doesn't force
-   its column wider than the data actually needs. */
+/* Headers wrap onto multiple lines (explicit breaks between name and unit) so a long label
+   doesn't force its column wider than the data actually needs. */
 .usage-by-day__table th {
   white-space: normal;
   line-height: 1.25;
@@ -98,14 +106,31 @@
   text-align: center;
 }
 
+.usage-by-day__table thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
 .usage-by-day__table thead th {
   color: var(--text);
   font-weight: 600;
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
 
 .usage-by-day__table thead tr:last-child th {
   border-bottom: 2px solid var(--border);
+}
+
+.usage-by-day__table tfoot {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+}
+
+.usage-by-day__table tfoot td {
+  background: var(--bg);
 }
 
 .usage-by-day__group-start {
@@ -116,4 +141,11 @@
   font-weight: 600;
   border-top: 2px solid var(--border);
   color: var(--accent);
+}
+
+/* Same accent family as the TOTAL row, but a lighter/muted shade to read as a secondary
+   summary rather than the primary one. */
+.usage-by-day__average-row td {
+  font-weight: 600;
+  color: var(--accent-border);
 }

@@ -35,6 +35,20 @@ function addFigures(a: MpanFigures, b: MpanFigures): MpanFigures {
   return { kwh, usageCost, stdChg, total: usageCost + stdChg, avgRate: kwh !== 0 ? usageCost / kwh : null }
 }
 
+// Averaging cost/kWh totals and re-deriving the rate from them gives the same rate as the
+// total row (dividing both sides of cost/kWh by the same day count cancels out), so the
+// average rate is just the total's rate, unchanged.
+function averageFigures(f: MpanFigures, days: number): MpanFigures {
+  if (days <= 0) return emptyFigures()
+  return {
+    kwh: f.kwh / days,
+    avgRate: f.avgRate,
+    usageCost: f.usageCost / days,
+    stdChg: f.stdChg / days,
+    total: f.total / days,
+  }
+}
+
 function pad2(value: number): string {
   return value.toString().padStart(2, '0')
 }
@@ -90,6 +104,7 @@ export default function UsageByDay() {
   const [meterPoints, setMeterPoints] = useState<MeterPoint[] | null>(null)
   const [selectedMpans, setSelectedMpans] = useState<Set<string> | null>(null)
   const [rows, setRows] = useState<DayRow[] | null>(null)
+  const [latestUsageDateByMpan, setLatestUsageDateByMpan] = useState<Map<string, string | null> | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -141,6 +156,8 @@ export default function UsageByDay() {
           rowByDate.set(date, { date, byMpan: {} })
         }
 
+        const latestUsageDateByMpan = new Map<string, string | null>()
+
         for (const { mpan, usageDays, standingCharges } of perMpanResults) {
           const stdChgByDate = new Map(standingCharges.map((s) => [s.chargeDate, s.amount]))
 
@@ -175,10 +192,13 @@ export default function UsageByDay() {
           // usage data can lag behind today (e.g. a smart meter reading not in yet), so only
           // treat a day as "happened" for this MPAN up to the latest day we have usage data
           // for, not simply up to today. No usage data at all means no day has happened yet.
+          // The same cutoff is reused below to average over days-with-data rather than the
+          // full month, for a part-way-through-the-month view.
           const latestUsageDate = usageDays.reduce<string | null>(
             (latest, day) => (latest === null || day.usageDate > latest ? day.usageDate : latest),
             null,
           )
+          latestUsageDateByMpan.set(mpan, latestUsageDate)
           for (const row of rowByDate.values()) {
             if (latestUsageDate !== null && row.date <= latestUsageDate) continue
             const f = row.byMpan[mpan]
@@ -187,6 +207,7 @@ export default function UsageByDay() {
           }
         }
 
+        setLatestUsageDateByMpan(latestUsageDateByMpan)
         setRows(Array.from(rowByDate.values()).sort((a, b) => a.date.localeCompare(b.date)))
       })
       .catch((err: unknown) => {
@@ -212,6 +233,16 @@ export default function UsageByDay() {
     }
     return totals
   }, [rows, meterPoints])
+
+  // Matches the standing-charge cutoff: for a part-way-through-the-month view, average over
+  // the days we actually have usage data for rather than the whole month. A completed past
+  // month naturally has data through its last day, so this has no effect there.
+  function daysWithData(mpan: string): number {
+    const latest = latestUsageDateByMpan?.get(mpan)
+    if (!latest) return 0
+    const dayOfMonth = Number(latest.split('-')[2])
+    return rows ? Math.min(dayOfMonth, rows.length) : dayOfMonth
+  }
 
   function grandTotal(byMpan: Record<string, MpanFigures>): { kwh: number; total: number } {
     let kwh = 0
@@ -309,15 +340,43 @@ export default function UsageByDay() {
               <tr>
                 {includedMeterPoints.map((mp) => (
                   <Fragment key={mp.mpan}>
-                    <th className="usage-by-day__group-start">Usage (kWh)</th>
-                    <th>Avg Rate (£/kWh)</th>
-                    <th>Usage Cost (£)</th>
-                    <th>Std Chg (£)</th>
-                    <th>Total (£)</th>
+                    <th className="usage-by-day__group-start">
+                      Usage
+                      <br />
+                      (kWh)
+                    </th>
+                    <th>
+                      Avg Rate
+                      <br />
+                      (£/kWh)
+                    </th>
+                    <th>
+                      Usage Cost
+                      <br />
+                      (£)
+                    </th>
+                    <th>
+                      Std Chg
+                      <br />
+                      (£)
+                    </th>
+                    <th>
+                      Total
+                      <br />
+                      (£)
+                    </th>
                   </Fragment>
                 ))}
-                <th className="usage-by-day__group-start">Usage (kWh)</th>
-                <th>Total (£)</th>
+                <th className="usage-by-day__group-start">
+                  Usage
+                  <br />
+                  (kWh)
+                </th>
+                <th>
+                  Total
+                  <br />
+                  (£)
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -371,6 +430,40 @@ export default function UsageByDay() {
                       <>
                         <td className="usage-by-day__group-start">{formatKwh(total.kwh)}</td>
                         <td>{formatCost(total.total)}</td>
+                      </>
+                    )
+                  })()}
+                </tr>
+                <tr className="usage-by-day__average-row">
+                  <td className="usage-by-day__label-col" colSpan={2}>
+                    AVERAGE / DAY
+                  </td>
+                  {includedMeterPoints.map((mp) => {
+                    const f = averageFigures(totalsByMpan.get(mp.mpan) ?? emptyFigures(), daysWithData(mp.mpan))
+                    return (
+                      <Fragment key={mp.mpan}>
+                        <td className="usage-by-day__group-start">{formatKwh(f.kwh)}</td>
+                        <td>{formatRate(f.avgRate)}</td>
+                        <td>{formatCost(f.usageCost)}</td>
+                        <td>{formatCost(f.stdChg)}</td>
+                        <td>{formatCost(f.total)}</td>
+                      </Fragment>
+                    )
+                  })}
+                  {(() => {
+                    // Each MPAN can have its own days-with-data, so average per MPAN first,
+                    // then sum those averages, rather than summing totals over one shared divisor.
+                    let kwh = 0
+                    let total = 0
+                    for (const mp of includedMeterPoints) {
+                      const f = averageFigures(totalsByMpan.get(mp.mpan) ?? emptyFigures(), daysWithData(mp.mpan))
+                      kwh += f.kwh
+                      total += f.total
+                    }
+                    return (
+                      <>
+                        <td className="usage-by-day__group-start">{formatKwh(kwh)}</td>
+                        <td>{formatCost(total)}</td>
                       </>
                     )
                   })()}
