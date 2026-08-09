@@ -86,3 +86,27 @@ export interface SetupResult {
   accountLoad: AccountLoadResult
   usageLoad: UsageLoadResult
 }
+
+export interface DataIntegrityGap {
+  from: string | null
+  to: string | null
+}
+
+export interface IntegrityCheckResult {
+  earliest: string | null
+  latest: string | null
+  gaps: DataIntegrityGap[]
+}
+
+export interface MpanIntegrityReport {
+  mpan: string
+  meterType: string
+  isExport: boolean
+  agreements: IntegrityCheckResult
+  standingCharges: IntegrityCheckResult
+  unitRates: IntegrityCheckResult
+}
+
+export interface DataIntegrityReport {
+  mpans: MpanIntegrityReport[]
+}

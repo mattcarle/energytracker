@@ -2,6 +2,7 @@ import type {
   AccountLoadResult,
   Agreement,
   AuthUser,
+  DataIntegrityReport,
   Meter,
   MeterPoint,
   SetupResult,
@@ -86,6 +87,10 @@ export function loadAccountData(deleteAll: boolean): Promise<AccountLoadResult> 
 
 export function loadUsageData(deleteAll: boolean): Promise<UsageLoadResult> {
   return request(`/api/load/usage?deleteAll=${deleteAll}`, { method: 'POST' })
+}
+
+export function checkDataIntegrity(): Promise<DataIntegrityReport> {
+  return getJson('/api/data-integrity/check')
 }
 
 export function getStandingChargesByDay(

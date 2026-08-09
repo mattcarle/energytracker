@@ -1,21 +1,23 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getCurrentUser, getSetupStatus, logout } from './api/client'
 import type { AuthUser } from './api/types'
-import Admin from './pages/Admin'
 import ChangePassword from './pages/ChangePassword'
 import Login from './pages/Login'
+import ManageData from './pages/ManageData'
+import ManageUsers from './pages/ManageUsers'
 import Setup from './pages/Setup'
 import UsageByDay from './pages/UsageByDay'
-import UserManagement from './pages/UserManagement'
 import './App.css'
 
-type Page = 'admin' | 'usage' | 'users'
+type Page = 'usage' | 'manage-data' | 'manage-users'
 type AuthPhase = 'loading' | 'setup' | 'login' | 'change-password' | 'authenticated'
 
 function App() {
   const [phase, setPhase] = useState<AuthPhase>('loading')
   const [user, setUser] = useState<AuthUser | null>(null)
   const [page, setPage] = useState<Page>('usage')
+  const [adminMenuOpen, setAdminMenuOpen] = useState(false)
+  const adminMenuRef = useRef<HTMLDivElement>(null)
 
   const refreshAuth = useCallback(() => {
     setPhase('loading')
@@ -39,6 +41,27 @@ function App() {
     refreshAuth()
   }, [refreshAuth])
 
+  useEffect(() => {
+    if (!adminMenuOpen) return
+
+    function handlePointerDown(event: MouseEvent) {
+      if (adminMenuRef.current && !adminMenuRef.current.contains(event.target as Node)) {
+        setAdminMenuOpen(false)
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setAdminMenuOpen(false)
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [adminMenuOpen])
+
   function handleAuthenticated(authenticatedUser: AuthUser) {
     setUser(authenticatedUser)
     setPhase(authenticatedUser.mustChangePassword ? 'change-password' : 'authenticated')
@@ -55,6 +78,11 @@ function App() {
       setPage('usage')
       setPhase('login')
     })
+  }
+
+  function selectAdminPage(target: 'manage-data' | 'manage-users') {
+    setPage(target)
+    setAdminMenuOpen(false)
   }
 
   if (phase === 'loading') {
@@ -77,6 +105,8 @@ function App() {
     return <ChangePassword username={user.username} onComplete={handlePasswordChanged} />
   }
 
+  const onAdminPage = page === 'manage-data' || page === 'manage-users'
+
   return (
     <div className="app-shell">
       <nav className="app-nav">
@@ -90,31 +120,43 @@ function App() {
             Usage
           </button>
           {user?.role === 'ADMIN' && (
-            <button
-              type="button"
-              className={page === 'admin' ? 'active' : ''}
-              onClick={() => setPage('admin')}
-            >
-              Admin
-            </button>
-          )}
-          {user?.role === 'ADMIN' && (
-            <button
-              type="button"
-              className={page === 'users' ? 'active' : ''}
-              onClick={() => setPage('users')}
-            >
-              Users
-            </button>
+            <div className="app-nav__dropdown" ref={adminMenuRef}>
+              <button
+                type="button"
+                className={onAdminPage ? 'active' : ''}
+                onClick={() => setAdminMenuOpen((open) => !open)}
+                aria-expanded={adminMenuOpen}
+              >
+                Admin ▾
+              </button>
+              {adminMenuOpen && (
+                <div className="app-nav__dropdown-panel">
+                  <button
+                    type="button"
+                    className={page === 'manage-data' ? 'active' : ''}
+                    onClick={() => selectAdminPage('manage-data')}
+                  >
+                    Manage Data
+                  </button>
+                  <button
+                    type="button"
+                    className={page === 'manage-users' ? 'active' : ''}
+                    onClick={() => selectAdminPage('manage-users')}
+                  >
+                    Manage Users
+                  </button>
+                </div>
+              )}
+            </div>
           )}
           <button type="button" onClick={handleLogout}>
             Log out ({user?.username})
           </button>
         </div>
       </nav>
-      {page === 'admin' && user?.role === 'ADMIN' && <Admin />}
+      {page === 'manage-data' && user?.role === 'ADMIN' && <ManageData />}
       {page === 'usage' && <UsageByDay />}
-      {page === 'users' && user?.role === 'ADMIN' && <UserManagement currentUserId={user.id} />}
+      {page === 'manage-users' && user?.role === 'ADMIN' && <ManageUsers currentUserId={user.id} />}
     </div>
   )
 }

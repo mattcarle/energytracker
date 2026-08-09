@@ -687,9 +687,14 @@ public class OctopusService {
             LocalDate day = londonDateOf(chargeStart);
             LocalDateTime daySlot = londonMidnightUtc(day);
             // A local day whose UTC midnight instant falls before chargeStart is only partially
-            // covered by this record; the day it belongs to already got its slot from elsewhere
-            // (or starts the series), so roll forward to the first fully-covered day.
-            while (daySlot.isBefore(chargeStart)) {
+            // covered by this record; if it's not the window's own first day, the day it belongs
+            // to already got its slot from an earlier record in this series, so roll forward to
+            // the first fully-covered day. The window's first day is never rolled past, even when
+            // windowStart itself (e.g. an agreement boundary recorded in UTC) falls mid-day rather
+            // than on a local-midnight boundary - nothing else will supply that day otherwise,
+            // which otherwise silently drops it (e.g. around a BST/GMT-adjacent agreement switch).
+            LocalDate windowStartDay = londonDateOf(windowStart);
+            while (daySlot.isBefore(chargeStart) && day.isAfter(windowStartDay)) {
                 day = day.plusDays(1);
                 daySlot = londonMidnightUtc(day);
             }

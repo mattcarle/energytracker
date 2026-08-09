@@ -30,4 +30,14 @@ public interface StandingChargeByDayRepository extends JpaRepository<StandingCha
                                                                          @Param("fromDate") LocalDate fromDate,
                                                                          @Param("toDate") LocalDate toDate,
                                                                          @Param("paymentMethods") List<String> paymentMethods);
+
+    @Query(value = """
+            SELECT DISTINCT sc.valid_from AS validFrom, sc.valid_to AS validTo
+            FROM meter_point mp
+                     JOIN agreement a ON mp.id = a.meter_point_id
+                     JOIN standing_charge_by_day sc ON sc.agreement_id = a.id
+            WHERE mp.mpan = :mpan
+            ORDER BY sc.valid_from
+            """, nativeQuery = true)
+    List<IntervalProjection> findDistinctIntervalsByMpan(@Param("mpan") String mpan);
 }

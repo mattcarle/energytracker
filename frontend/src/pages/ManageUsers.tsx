@@ -1,13 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { createUser, deleteUser, getUsers } from '../api/client'
 import type { AuthUser, UserRole } from '../api/types'
-import './UserManagement.css'
+import './ManageUsers.css'
 
-interface UserManagementProps {
+interface ManageUsersProps {
   currentUserId: number
 }
 
-export default function UserManagement({ currentUserId }: UserManagementProps) {
+export default function ManageUsers({ currentUserId }: ManageUsersProps) {
   const [users, setUsers] = useState<AuthUser[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [username, setUsername] = useState('')
@@ -47,14 +47,14 @@ export default function UserManagement({ currentUserId }: UserManagementProps) {
   }
 
   return (
-    <section className="user-management">
-      <h1>Users</h1>
+    <section className="manage-users">
+      <h1>Manage Users</h1>
 
-      {error && <p className="user-management__error">{error}</p>}
+      {error && <p className="manage-users__error">{error}</p>}
       {!error && !users && <p>Loading users…</p>}
 
       {users && (
-        <table className="user-management__table">
+        <table className="manage-users__table">
           <thead>
             <tr>
               <th>Username</th>
@@ -83,7 +83,7 @@ export default function UserManagement({ currentUserId }: UserManagementProps) {
       )}
 
       <h2>Add user</h2>
-      <form className="user-management__form" onSubmit={handleCreate}>
+      <form className="manage-users__form" onSubmit={handleCreate}>
         <label>
           <span>Username</span>
           <input value={username} onChange={(e) => setUsername(e.target.value)} required />
@@ -109,7 +109,7 @@ export default function UserManagement({ currentUserId }: UserManagementProps) {
           {submitting ? 'Adding…' : 'Add user'}
         </button>
       </form>
-      {formError && <p className="user-management__error">{formError}</p>}
+      {formError && <p className="manage-users__error">{formError}</p>}
     </section>
   )
 }

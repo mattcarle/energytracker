@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
+  checkDataIntegrity,
   getAgreements,
   getMeterPoints,
   getMeters,
@@ -7,9 +8,17 @@ import {
   loadAccountData,
   loadUsageData,
 } from '../api/client'
-import type { AccountLoadResult, Agreement, Meter, MeterPoint, UsageDateRange, UsageLoadResult } from '../api/types'
+import type {
+  AccountLoadResult,
+  Agreement,
+  DataIntegrityReport,
+  Meter,
+  MeterPoint,
+  UsageDateRange,
+  UsageLoadResult,
+} from '../api/types'
 import Modal from '../components/Modal'
-import './Admin.css'
+import './ManageData.css'
 
 interface MeterPointDetails {
   meterPoint: MeterPoint
@@ -37,7 +46,17 @@ function formatDate(value: string | null): string {
   return new Date(value).toLocaleDateString()
 }
 
-export default function Admin() {
+function formatDateTime(value: string | null): string {
+  if (!value) return 'ongoing'
+  return new Date(value).toLocaleString()
+}
+
+function meterPointLabel(meterType: string, isExport: boolean): string {
+  if (meterType === 'GAS') return 'Gas'
+  return isExport ? 'Electricity (Export)' : 'Electricity (Import)'
+}
+
+export default function ManageData() {
   const [details, setDetails] = useState<MeterPointDetails[] | null>(null)
   const [dateRanges, setDateRanges] = useState<Map<string, UsageDateRange> | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -49,6 +68,9 @@ export default function Admin() {
   const [loadingAccount, setLoadingAccount] = useState(false)
   const [loadingUsage, setLoadingUsage] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+
+  const [loadingIntegrity, setLoadingIntegrity] = useState(false)
+  const [integrityReport, setIntegrityReport] = useState<DataIntegrityReport | null>(null)
 
   const refresh = useCallback(() => {
     setError(null)
@@ -114,16 +136,25 @@ export default function Admin() {
     if (target === 'usage') performRefreshUsage(true)
   }
 
-  return (
-    <section className="admin">
-      <h1>Admin</h1>
+  function performIntegrityCheck() {
+    setActionError(null)
+    setLoadingIntegrity(true)
+    checkDataIntegrity()
+      .then(setIntegrityReport)
+      .catch((err: unknown) => setActionError(err instanceof Error ? err.message : 'Failed to check data integrity'))
+      .finally(() => setLoadingIntegrity(false))
+  }
 
-      {error && <p className="admin__error">{error}</p>}
+  return (
+    <section className="manage-data">
+      <h1>Manage Data</h1>
+
+      {error && <p className="manage-data__error">{error}</p>}
       {!error && !details && <p>Loading account details…</p>}
       {!error && details && details.length === 0 && <p>No meter points found.</p>}
 
       {details && details.length > 0 && (
-        <div className="admin__grid">
+        <div className="manage-data__grid">
           {details.map(({ meterPoint, meters, currentAgreement }) => {
             const usageRange = dateRanges?.get(meterPoint.mpan) ?? null
             return (
@@ -172,11 +203,11 @@ export default function Admin() {
         </div>
       )}
 
-      <div className="admin__actions">
-        <div className="admin__action-card">
+      <div className="manage-data__actions">
+        <div className="manage-data__action-card">
           <h2>Refresh account data</h2>
           <p>Reloads meter points, meters, agreements, standing charges and unit rates from Octopus Energy.</p>
-          <label className="admin__checkbox">
+          <label className="manage-data__checkbox">
             <input
               type="checkbox"
               checked={deleteAllAccount}
@@ -189,10 +220,10 @@ export default function Admin() {
           </button>
         </div>
 
-        <div className="admin__action-card">
+        <div className="manage-data__action-card">
           <h2>Refresh usage data</h2>
           <p>Reloads consumption data from Octopus Energy for all meter points.</p>
-          <label className="admin__checkbox">
+          <label className="manage-data__checkbox">
             <input
               type="checkbox"
               checked={deleteAllUsage}
@@ -204,9 +235,20 @@ export default function Admin() {
             {loadingUsage ? 'Refreshing…' : 'Refresh Usage Data'}
           </button>
         </div>
+
+        <div className="manage-data__action-card">
+          <h2>Data integrity check</h2>
+          <p>
+            Checks that agreements, standing charges and unit rates are contiguous for every MPAN,
+            with no gaps between records.
+          </p>
+          <button type="button" onClick={performIntegrityCheck} disabled={loadingIntegrity}>
+            {loadingIntegrity ? 'Checking…' : 'Check Data Integrity'}
+          </button>
+        </div>
       </div>
 
-      {actionError && <p className="admin__error">{actionError}</p>}
+      {actionError && <p className="manage-data__error">{actionError}</p>}
 
       {confirmTarget && (
         <Modal
@@ -270,6 +312,55 @@ export default function Admin() {
               <dd>{summary.result.utcToLocalCount}</dd>
             </dl>
           )}
+        </Modal>
+      )}
+
+      {integrityReport && (
+        <Modal
+          title="Data integrity check"
+          onDismiss={() => setIntegrityReport(null)}
+          actions={
+            <button type="button" className="modal__button--primary" onClick={() => setIntegrityReport(null)}>
+              Close
+            </button>
+          }
+        >
+          {integrityReport.mpans.length === 0 && <p>No meter points found.</p>}
+          {integrityReport.mpans.map((mpanReport) => (
+            <div className="integrity-report__mpan" key={mpanReport.mpan}>
+              <h3>
+                MPAN {mpanReport.mpan} ({meterPointLabel(mpanReport.meterType, mpanReport.isExport)})
+              </h3>
+              {(
+                [
+                  ['Agreements', mpanReport.agreements],
+                  ['Standing charges', mpanReport.standingCharges],
+                  ['Unit rates', mpanReport.unitRates],
+                ] as const
+              ).map(([label, result]) => (
+                <div className="integrity-report__category" key={label}>
+                  <p className="integrity-report__category-title">{label}</p>
+                  <p>
+                    {result.earliest
+                      ? `${formatDateTime(result.earliest)} – ${formatDateTime(result.latest)}`
+                      : 'No data'}
+                  </p>
+                  {result.earliest && result.gaps.length === 0 && (
+                    <p className="integrity-report__ok">No gaps found.</p>
+                  )}
+                  {result.gaps.length > 0 && (
+                    <ul className="integrity-report__gaps">
+                      {result.gaps.map((gap, index) => (
+                        <li key={index}>
+                          Gap: {formatDateTime(gap.from)} &rarr; {formatDateTime(gap.to)}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
+          ))}
         </Modal>
       )}
     </section>
