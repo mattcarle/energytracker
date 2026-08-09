@@ -296,6 +296,21 @@ export default function UsageByDay() {
     <section className="usage-by-day">
       <h1>Usage by day</h1>
 
+      {meterPoints && meterPoints.length > 0 && (
+        <div className="usage-by-day__mpan-toggles">
+          {meterPoints.map((mp) => (
+            <label key={mp.mpan} className="usage-by-day__mpan-toggle">
+              <input
+                type="checkbox"
+                checked={selectedMpans?.has(mp.mpan) ?? true}
+                onChange={() => toggleMpan(mp.mpan)}
+              />
+              MPAN {mp.mpan} &ndash; {meterPointLabel(mp)}
+            </label>
+          ))}
+        </div>
+      )}
+
       <div className="usage-by-day__controls">
         <label>
           Month
@@ -326,21 +341,6 @@ export default function UsageByDay() {
           </button>
         </div>
       </div>
-
-      {meterPoints && meterPoints.length > 0 && (
-        <div className="usage-by-day__mpan-toggles">
-          {meterPoints.map((mp) => (
-            <label key={mp.mpan} className="usage-by-day__mpan-toggle">
-              <input
-                type="checkbox"
-                checked={selectedMpans?.has(mp.mpan) ?? true}
-                onChange={() => toggleMpan(mp.mpan)}
-              />
-              MPAN {mp.mpan} &ndash; {meterPointLabel(mp)}
-            </label>
-          ))}
-        </div>
-      )}
 
       {error && <p className="usage-by-day__error">{error}</p>}
       {!error && !rows && <p>Loading usage data…</p>}
@@ -469,7 +469,7 @@ export default function UsageByDay() {
                 </tr>
                 <tr className="usage-by-day__average-row">
                   <td className="usage-by-day__label-col" colSpan={2}>
-                    AVERAGE / DAY
+                    AVG / DAY
                   </td>
                   {includedMeterPoints.map((mp) => {
                     const f = averageFigures(totalsByMpan.get(mp.mpan) ?? emptyFigures(), daysWithData(mp.mpan))

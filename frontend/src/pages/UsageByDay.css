@@ -83,12 +83,12 @@
   cursor: pointer;
 }
 
-/* Bounded height + vertical scroll keeps the header/footer and ~10 body rows on screen
+/* Bounded height + vertical scroll keeps the header/footer and ~12 body rows on screen
    together on a laptop display; horizontal scroll is a fallback for narrow viewports, with
    column width/typeface trimmed below so two MPANs plus TOTAL fit without it by default. */
 .usage-by-day__table-wrap {
   overflow: auto;
-  max-height: 440px;
+  max-height: 380px;
   margin-top: 8px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -97,19 +97,34 @@
 .usage-by-day__table {
   width: max-content;
   min-width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
+  /* separate (not collapse) - sticky thead/tfoot backgrounds don't reliably stay opaque over
+     scrolling body content when the table uses collapsed borders, letting row text bleed
+     through during scroll. Horizontal border lines below are drawn as inset box-shadows
+     instead of border-bottom/-top so they don't visually double up at row boundaries now that
+     collapsing no longer merges them. */
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 11px;
+  /* :root sets a percentage line-height, which inherits as an absolute px value rather than
+     recomputing for this smaller font-size - override explicitly or rows end up far taller
+     than the font implies. */
+  line-height: 1.3;
 }
 
 .usage-by-day__table th,
 .usage-by-day__table td {
   text-align: right;
   padding: 4px 5px;
-  border-bottom: 1px solid var(--border);
+  box-shadow: inset 0 -1px 0 var(--border);
 }
 
 .usage-by-day__table td {
   white-space: nowrap;
+}
+
+/* Tighter than header/footer rows so more body rows fit in the scrollable area. */
+.usage-by-day__table tbody td {
+  padding: 2px 5px;
 }
 
 /* Headers wrap onto multiple lines (explicit breaks between name and unit) so a long label
@@ -124,8 +139,14 @@
   white-space: nowrap;
 }
 
-.usage-by-day__mpan-header {
+/* Extra type-selector weight beats the base th/td right-align rule above. */
+.usage-by-day__table th.usage-by-day__mpan-header {
   text-align: center;
+}
+
+/* Sits at the bottom of its rowSpan=2 cell so it lines up with the column-label row below it. */
+.usage-by-day__table thead th.usage-by-day__label-col {
+  vertical-align: bottom;
 }
 
 .usage-by-day__table thead {
@@ -142,7 +163,7 @@
 }
 
 .usage-by-day__table thead tr:last-child th {
-  border-bottom: 2px solid var(--border);
+  box-shadow: inset 0 -2px 0 var(--border);
 }
 
 .usage-by-day__table tfoot {
@@ -161,13 +182,21 @@
 
 .usage-by-day__total-row td {
   font-weight: 600;
-  border-top: 2px solid var(--border);
+  /* Combines this row's top separator with the base bottom line - box-shadow (unlike border
+     shorthand per side) fully replaces the base rule's shadow rather than layering onto it. */
+  box-shadow:
+    inset 0 2px 0 var(--border),
+    inset 0 -1px 0 var(--border);
   color: var(--accent);
+  /* Extra top padding widens the gap from the body rows above. */
+  padding-top: 8px;
 }
 
-/* Same accent family as the TOTAL row, but a lighter/muted shade to read as a secondary
-   summary rather than the primary one. */
+/* Same colour as the TOTAL row - they're both summary rows read as a pair. */
 .usage-by-day__average-row td {
   font-weight: 600;
-  color: var(--accent-border);
+  color: var(--accent);
+  /* Tighter than usual so it reads close to the TOTAL row above it. */
+  padding-top: 2px;
+  padding-bottom: 2px;
 }
