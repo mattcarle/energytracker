@@ -1,6 +1,6 @@
 .usage-by-day {
   width: 100%;
-  max-width: 1280px;
+  max-width: 1600px;
   margin: 0 auto;
   padding: 48px 24px;
   box-sizing: border-box;
@@ -55,8 +55,8 @@
   cursor: pointer;
 }
 
-/* Horizontal scroll keeps the type size readable instead of squeezing many
-   grouped columns to fit the viewport. */
+/* Horizontal scroll is a fallback for narrow viewports; column width/typeface below are
+   trimmed so two MPANs plus TOTAL fit without it on a typical laptop-width screen. */
 .usage-by-day__table-wrap {
   overflow-x: auto;
   margin-top: 8px;
@@ -68,19 +68,34 @@
   width: max-content;
   min-width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .usage-by-day__table th,
 .usage-by-day__table td {
   text-align: right;
-  padding: 7px 10px;
+  padding: 5px 6px;
   border-bottom: 1px solid var(--border);
+}
+
+.usage-by-day__table td {
   white-space: nowrap;
 }
 
-.usage-by-day__date-col {
+/* Headers wrap onto multiple lines so a long label (e.g. "Avg Rate (£/kWh)") doesn't force
+   its column wider than the data actually needs. */
+.usage-by-day__table th {
+  white-space: normal;
+  line-height: 1.25;
+}
+
+.usage-by-day__label-col {
   text-align: left;
+  white-space: nowrap;
+}
+
+.usage-by-day__mpan-header {
+  text-align: center;
 }
 
 .usage-by-day__table thead th {

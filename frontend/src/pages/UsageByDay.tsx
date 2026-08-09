@@ -51,9 +51,21 @@ function daysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate()
 }
 
+function todayDateString(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
+}
+
 function meterPointLabel(meterPoint: MeterPoint): string {
   if (meterPoint.meterType === 'GAS') return 'Gas'
   return meterPoint.isExport ? 'Electricity (Export)' : 'Electricity (Import)'
+}
+
+// Built from local calendar components (not parsed from an ISO string) so the weekday is
+// always correct for the intended calendar date regardless of the viewer's time zone.
+function dayOfWeek(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short' })
 }
 
 function formatDate(dateStr: string): string {
@@ -91,7 +103,9 @@ export default function UsageByDay() {
       .then((points) => {
         if (cancelled) return
         setMeterPoints(points)
-        setSelectedMpans((current) => current ?? new Set(points.map((p) => p.mpan)))
+        setSelectedMpans(
+          (current) => current ?? new Set(points.filter((p) => p.meterType !== 'GAS').map((p) => p.mpan)),
+        )
       })
       .catch((err: unknown) => {
         if (cancelled) return
@@ -110,6 +124,7 @@ export default function UsageByDay() {
     const fromDate = firstOfMonth(year, month)
     const toDate = firstOfNextMonth(year, month)
     const totalDays = daysInMonth(year, month)
+    const today = todayDateString()
 
     Promise.all(
       meterPoints.map((meterPoint) =>
@@ -154,6 +169,15 @@ export default function UsageByDay() {
             const row = rowByDate.get(date)
             if (!row || row.byMpan[mpan]) continue
             row.byMpan[mpan] = { kwh: 0, avgRate: null, usageCost: 0, stdChg: amount, total: amount }
+          }
+        }
+
+        // A day that hasn't happened yet can't have accrued a standing charge.
+        for (const row of rowByDate.values()) {
+          if (row.date <= today) continue
+          for (const mpan of Object.keys(row.byMpan)) {
+            const f = row.byMpan[mpan]
+            row.byMpan[mpan] = { ...f, stdChg: 0, total: f.usageCost }
           }
         }
 
@@ -261,25 +285,20 @@ export default function UsageByDay() {
           <table className="usage-by-day__table">
             <thead>
               <tr>
-                <th className="usage-by-day__date-col" rowSpan={3}>
+                <th className="usage-by-day__label-col" rowSpan={2}>
+                  Day
+                </th>
+                <th className="usage-by-day__label-col" rowSpan={2}>
                   Date
                 </th>
                 {includedMeterPoints.map((mp) => (
-                  <th key={mp.mpan} className="usage-by-day__group-start" colSpan={5}>
-                    MPAN {mp.mpan}
+                  <th key={mp.mpan} className="usage-by-day__group-start usage-by-day__mpan-header" colSpan={5}>
+                    MPAN {mp.mpan} - {meterPointLabel(mp)}
                   </th>
                 ))}
                 <th className="usage-by-day__group-start" colSpan={2}>
                   TOTAL
                 </th>
-              </tr>
-              <tr>
-                {includedMeterPoints.map((mp) => (
-                  <th key={mp.mpan} className="usage-by-day__group-start" colSpan={5}>
-                    {meterPointLabel(mp)}
-                  </th>
-                ))}
-                <th className="usage-by-day__group-start" colSpan={2} />
               </tr>
               <tr>
                 {includedMeterPoints.map((mp) => (
@@ -300,7 +319,8 @@ export default function UsageByDay() {
                 const total = grandTotal(row.byMpan)
                 return (
                   <tr key={row.date}>
-                    <td className="usage-by-day__date-col">{formatDate(row.date)}</td>
+                    <td className="usage-by-day__label-col">{dayOfWeek(row.date)}</td>
+                    <td className="usage-by-day__label-col">{formatDate(row.date)}</td>
                     {includedMeterPoints.map((mp) => {
                       const f = row.byMpan[mp.mpan] ?? emptyFigures()
                       return (
@@ -322,7 +342,9 @@ export default function UsageByDay() {
             {totalsByMpan && (
               <tfoot>
                 <tr className="usage-by-day__total-row">
-                  <td className="usage-by-day__date-col">TOTAL</td>
+                  <td className="usage-by-day__label-col" colSpan={2}>
+                    TOTAL
+                  </td>
                   {includedMeterPoints.map((mp) => {
                     const f = totalsByMpan.get(mp.mpan) ?? emptyFigures()
                     return (
