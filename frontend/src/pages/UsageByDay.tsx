@@ -18,6 +18,10 @@ export interface MpanFigures {
   usageCost: number
   stdChg: number
   total: number
+  // Off-peak kWh, summed like kwh/usageCost rather than kept as a ratio - null-for-that-day
+  // (no peak/off-peak split applicable) contributes 0, the same as "none of this day was
+  // off-peak", so aggregate percentages stay meaningful across a mix of split/non-split days.
+  kwhOffPeak: number
 }
 
 export interface DayRow {
@@ -26,14 +30,22 @@ export interface DayRow {
 }
 
 function emptyFigures(): MpanFigures {
-  return { kwh: 0, avgRate: null, usageCost: 0, stdChg: 0, total: 0 }
+  return { kwh: 0, avgRate: null, usageCost: 0, stdChg: 0, total: 0, kwhOffPeak: 0 }
 }
 
 function addFigures(a: MpanFigures, b: MpanFigures): MpanFigures {
   const kwh = a.kwh + b.kwh
   const usageCost = a.usageCost + b.usageCost
   const stdChg = a.stdChg + b.stdChg
-  return { kwh, usageCost, stdChg, total: usageCost + stdChg, avgRate: kwh !== 0 ? usageCost / kwh : null }
+  const kwhOffPeak = a.kwhOffPeak + b.kwhOffPeak
+  return {
+    kwh,
+    usageCost,
+    stdChg,
+    total: usageCost + stdChg,
+    avgRate: kwh !== 0 ? usageCost / kwh : null,
+    kwhOffPeak,
+  }
 }
 
 // Averaging cost/kWh totals and re-deriving the rate from them gives the same rate as the
@@ -47,7 +59,14 @@ function averageFigures(f: MpanFigures, days: number): MpanFigures {
     usageCost: f.usageCost / days,
     stdChg: f.stdChg / days,
     total: f.total / days,
+    kwhOffPeak: f.kwhOffPeak / days,
   }
+}
+
+// Off-peak % is derived from the summed kwh/kwhOffPeak at display time (like avgRate), not
+// stored directly, so it stays consistent whether reading a single day or an aggregated row.
+function offPeakPct(f: MpanFigures): number | null {
+  return f.kwh !== 0 ? (f.kwhOffPeak / f.kwh) * 100 : null
 }
 
 function pad2(value: number): string {
@@ -98,6 +117,11 @@ function formatRate(value: number | null): string {
   return value.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })
 }
 
+function formatPercent(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return '–'
+  return `${value.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
+}
+
 export default function UsageByDay() {
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
@@ -106,6 +130,7 @@ export default function UsageByDay() {
   const [selectedMpans, setSelectedMpans] = useState<Set<string> | null>(null)
   const [rows, setRows] = useState<DayRow[] | null>(null)
   const [latestUsageDateByMpan, setLatestUsageDateByMpan] = useState<Map<string, string | null> | null>(null)
+  const [offPeakAvailableByMpan, setOffPeakAvailableByMpan] = useState<Map<string, boolean> | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const [showChart, setShowChart] = useState(true)
@@ -162,9 +187,12 @@ export default function UsageByDay() {
         }
 
         const latestUsageDateByMpan = new Map<string, string | null>()
+        const offPeakAvailableByMpan = new Map<string, boolean>()
 
         for (const { mpan, usageDays, standingCharges } of perMpanResults) {
           const stdChgByDate = new Map(standingCharges.map((s) => [s.chargeDate, s.amount]))
+
+          offPeakAvailableByMpan.set(mpan, usageDays.some((day) => day.kwhOffPeak !== null))
 
           for (const day of usageDays) {
             const row = rowByDate.get(day.usageDate)
@@ -182,6 +210,7 @@ export default function UsageByDay() {
               usageCost,
               stdChg,
               total: usageCost + stdChg,
+              kwhOffPeak: day.kwhOffPeak !== null ? day.kwhOffPeak * sign : 0,
             }
           }
 
@@ -190,7 +219,7 @@ export default function UsageByDay() {
           for (const [date, amount] of stdChgByDate) {
             const row = rowByDate.get(date)
             if (!row || row.byMpan[mpan]) continue
-            row.byMpan[mpan] = { kwh: 0, avgRate: null, usageCost: 0, stdChg: amount, total: amount }
+            row.byMpan[mpan] = { kwh: 0, avgRate: null, usageCost: 0, stdChg: amount, total: amount, kwhOffPeak: 0 }
           }
 
           // Standing charges are typically known in advance for the whole agreement, but
@@ -213,6 +242,7 @@ export default function UsageByDay() {
         }
 
         setLatestUsageDateByMpan(latestUsageDateByMpan)
+        setOffPeakAvailableByMpan(offPeakAvailableByMpan)
         setRows(Array.from(rowByDate.values()).sort((a, b) => a.date.localeCompare(b.date)))
       })
       .catch((err: unknown) => {
@@ -434,7 +464,11 @@ export default function UsageByDay() {
                   Date
                 </th>
                 {includedMeterPoints.map((mp) => (
-                  <th key={mp.mpan} className="usage-by-day__group-start usage-by-day__mpan-header" colSpan={5}>
+                  <th
+                    key={mp.mpan}
+                    className="usage-by-day__group-start usage-by-day__mpan-header"
+                    colSpan={offPeakAvailableByMpan?.get(mp.mpan) ? 6 : 5}
+                  >
                     MPAN {mp.mpan} - {meterPointLabel(mp)}
                   </th>
                 ))}
@@ -450,6 +484,13 @@ export default function UsageByDay() {
                       <br />
                       (kWh)
                     </th>
+                    {offPeakAvailableByMpan?.get(mp.mpan) && (
+                      <th>
+                        Off Peak
+                        <br />
+                        (%)
+                      </th>
+                    )}
                     <th>
                       Avg Rate
                       <br />
@@ -496,6 +537,7 @@ export default function UsageByDay() {
                       return (
                         <Fragment key={mp.mpan}>
                           <td className="usage-by-day__group-start">{formatKwh(f.kwh)}</td>
+                          {offPeakAvailableByMpan?.get(mp.mpan) && <td>{formatPercent(offPeakPct(f))}</td>}
                           <td>{formatRate(f.avgRate)}</td>
                           <td>{formatCost(f.usageCost)}</td>
                           <td>{formatCost(f.stdChg)}</td>
@@ -520,6 +562,7 @@ export default function UsageByDay() {
                     return (
                       <Fragment key={mp.mpan}>
                         <td className="usage-by-day__group-start">{formatKwh(f.kwh)}</td>
+                        {offPeakAvailableByMpan?.get(mp.mpan) && <td>{formatPercent(offPeakPct(f))}</td>}
                         <td>{formatRate(f.avgRate)}</td>
                         <td>{formatCost(f.usageCost)}</td>
                         <td>{formatCost(f.stdChg)}</td>
@@ -548,6 +591,7 @@ export default function UsageByDay() {
                     return (
                       <Fragment key={mp.mpan}>
                         <td className="usage-by-day__group-start">{formatKwh(f.kwh)}</td>
+                        {offPeakAvailableByMpan?.get(mp.mpan) && <td>{formatPercent(offPeakPct(f))}</td>}
                         <td>{formatRate(f.avgRate)}</td>
                         <td>{formatCost(f.usageCost)}</td>
                         <td>{formatCost(f.stdChg)}</td>
