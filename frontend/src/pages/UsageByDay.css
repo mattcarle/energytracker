@@ -58,10 +58,23 @@
   margin-top: 8px;
 }
 
+.usage-by-day__chart-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
 .usage-by-day__metric-toggle {
   display: flex;
   gap: 8px;
-  margin-bottom: 8px;
+}
+
+.usage-by-day__chart-total {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-h);
 }
 
 .usage-by-day__metric-toggle button {

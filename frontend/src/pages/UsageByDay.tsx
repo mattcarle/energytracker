@@ -276,6 +276,20 @@ export default function UsageByDay() {
     return totals
   }, [rows, meterPoints])
 
+  // Same figure as the table's TOTAL row/column - "cost" here means usage cost + standing
+  // charge, matching what the chart's stacked "Cost (£)" bars actually add up to.
+  const chartTotal = useMemo(() => {
+    if (!totalsByMpan) return null
+    let kwh = 0
+    let total = 0
+    for (const mp of includedMeterPoints) {
+      const figures = totalsByMpan.get(mp.mpan) ?? emptyFigures()
+      kwh += figures.kwh
+      total += figures.total
+    }
+    return { kwh, total }
+  }, [totalsByMpan, includedMeterPoints])
+
   // Matches the standing-charge cutoff: for a part-way-through-the-month view, average over
   // the days we actually have usage data for rather than the whole month. A completed past
   // month naturally has data through its last day, so this has no effect there.
@@ -432,21 +446,28 @@ export default function UsageByDay() {
 
       {!error && rows && hasAnyUsage && showChart && (
         <div className="usage-by-day__chart-section">
-          <div className="usage-by-day__metric-toggle">
-            <button
-              type="button"
-              className={chartMetric === 'kwh' ? 'active' : ''}
-              onClick={() => setChartMetric('kwh')}
-            >
-              Usage (kWh)
-            </button>
-            <button
-              type="button"
-              className={chartMetric === 'cost' ? 'active' : ''}
-              onClick={() => setChartMetric('cost')}
-            >
-              Cost (£)
-            </button>
+          <div className="usage-by-day__chart-toolbar">
+            <div className="usage-by-day__metric-toggle">
+              <button
+                type="button"
+                className={chartMetric === 'kwh' ? 'active' : ''}
+                onClick={() => setChartMetric('kwh')}
+              >
+                Usage (kWh)
+              </button>
+              <button
+                type="button"
+                className={chartMetric === 'cost' ? 'active' : ''}
+                onClick={() => setChartMetric('cost')}
+              >
+                Cost (£)
+              </button>
+            </div>
+            {chartTotal && (
+              <div className="usage-by-day__chart-total">
+                Total: {chartMetric === 'kwh' ? `${formatKwh(chartTotal.kwh)} kWh` : `£${formatCost(chartTotal.total)}`}
+              </div>
+            )}
           </div>
           <UsageBarChart rows={rows} meterPoints={includedMeterPoints} metric={chartMetric} />
         </div>
