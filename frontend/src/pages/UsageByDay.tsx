@@ -562,8 +562,10 @@ export default function UsageByDay() {
                     return (
                       <Fragment key={mp.mpan}>
                         <td className="usage-by-day__group-start">{formatKwh(f.kwh)}</td>
-                        {offPeakAvailableByMpan?.get(mp.mpan) && <td>{formatPercent(offPeakPct(f))}</td>}
-                        <td>{formatRate(f.avgRate)}</td>
+                        {/* Off Peak (%) and Avg Rate are ratios, not summable totals - the AVG/DAY
+                            row below already shows them, so leave these blank rather than repeat. */}
+                        {offPeakAvailableByMpan?.get(mp.mpan) && <td>&nbsp;</td>}
+                        <td>&nbsp;</td>
                         <td>{formatCost(f.usageCost)}</td>
                         <td>{formatCost(f.stdChg)}</td>
                         <td>{formatCost(f.total)}</td>
