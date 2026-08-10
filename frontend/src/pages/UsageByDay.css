@@ -9,7 +9,77 @@
 
 .usage-by-day h1 {
   font-size: 26px;
+  margin: 0;
+}
+
+.usage-by-day__heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   margin: 0 0 16px;
+}
+
+.usage-by-day__view-toggles {
+  display: flex;
+  gap: 8px;
+}
+
+.usage-by-day__view-toggles button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.usage-by-day__view-toggles button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.usage-by-day__view-toggles button.active {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.usage-by-day__view-toggles button:disabled {
+  cursor: default;
+}
+
+.usage-by-day__chart-section {
+  margin-top: 8px;
+}
+
+.usage-by-day__metric-toggle {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.usage-by-day__metric-toggle button {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.usage-by-day__metric-toggle button.active {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent);
 }
 
 .usage-by-day__error {

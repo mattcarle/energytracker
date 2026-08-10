@@ -1,0 +1,30 @@
+.usage-bar-chart {
+  margin: 8px 0 24px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+.usage-bar-chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  justify-content: center;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.usage-bar-chart__legend-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.usage-bar-chart__legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}

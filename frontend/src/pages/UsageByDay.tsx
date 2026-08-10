@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { getMeterPoints, getStandingChargesByDay, getUsageByDay } from '../api/client'
 import type { MeterPoint } from '../api/types'
+import UsageBarChart, { type ChartMetric } from '../components/UsageBarChart'
 import './UsageByDay.css'
 
 const MONTH_NAMES = [
@@ -11,7 +12,7 @@ const MONTH_NAMES = [
 const CURRENT_YEAR = new Date().getFullYear()
 const YEAR_OPTIONS = Array.from({ length: 6 }, (_, i) => CURRENT_YEAR - i)
 
-interface MpanFigures {
+export interface MpanFigures {
   kwh: number
   avgRate: number | null
   usageCost: number
@@ -19,7 +20,7 @@ interface MpanFigures {
   total: number
 }
 
-interface DayRow {
+export interface DayRow {
   date: string
   byMpan: Record<string, MpanFigures>
 }
@@ -65,7 +66,7 @@ function daysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate()
 }
 
-function meterPointLabel(meterPoint: MeterPoint): string {
+export function meterPointLabel(meterPoint: MeterPoint): string {
   if (meterPoint.meterType === 'GAS') return 'Gas'
   return meterPoint.isExport ? 'Electricity (Export)' : 'Electricity (Import)'
 }
@@ -77,7 +78,7 @@ function dayOfWeek(dateStr: string): string {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short' })
 }
 
-function formatDate(dateStr: string): string {
+export function formatDate(dateStr: string): string {
   const [, monthPart, dayPart] = dateStr.split('-')
   const monthIndex = Number(monthPart) - 1
   return `${dayPart}-${MONTH_NAMES[monthIndex].slice(0, 3)}`
@@ -106,6 +107,10 @@ export default function UsageByDay() {
   const [rows, setRows] = useState<DayRow[] | null>(null)
   const [latestUsageDateByMpan, setLatestUsageDateByMpan] = useState<Map<string, string | null> | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  const [showChart, setShowChart] = useState(true)
+  const [showTable, setShowTable] = useState(true)
+  const [chartMetric, setChartMetric] = useState<ChartMetric>('kwh')
 
   useEffect(() => {
     let cancelled = false
@@ -280,6 +285,16 @@ export default function UsageByDay() {
     }
   }
 
+  // Refuses to turn a view off if it's the only one currently on, so the user can never end
+  // up with both chart and table hidden.
+  function toggleChart() {
+    setShowChart((current) => (current && !showTable ? current : !current))
+  }
+
+  function toggleTable() {
+    setShowTable((current) => (current && !showChart ? current : !current))
+  }
+
   function toggleMpan(mpan: string) {
     setSelectedMpans((current) => {
       const next = new Set(current)
@@ -294,7 +309,42 @@ export default function UsageByDay() {
 
   return (
     <section className="usage-by-day">
-      <h1>Usage by day</h1>
+      <div className="usage-by-day__heading-row">
+        <h1>Usage by day</h1>
+        <div className="usage-by-day__view-toggles">
+          <button
+            type="button"
+            className={showChart ? 'active' : ''}
+            onClick={toggleChart}
+            disabled={showChart && !showTable}
+            aria-pressed={showChart}
+            aria-label="Show chart"
+            title="Show chart"
+          >
+            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+              <rect x="2" y="10" width="4" height="8" fill="currentColor" />
+              <rect x="8" y="5" width="4" height="13" fill="currentColor" />
+              <rect x="14" y="2" width="4" height="16" fill="currentColor" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className={showTable ? 'active' : ''}
+            onClick={toggleTable}
+            disabled={showTable && !showChart}
+            aria-pressed={showTable}
+            aria-label="Show table"
+            title="Show table"
+          >
+            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+              <rect x="2" y="2" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" />
+              <line x1="2" y1="7.33" x2="18" y2="7.33" stroke="currentColor" strokeWidth="1.5" />
+              <line x1="2" y1="12.67" x2="18" y2="12.67" stroke="currentColor" strokeWidth="1.5" />
+              <line x1="8.67" y1="2" x2="8.67" y2="18" stroke="currentColor" strokeWidth="1.5" />
+            </svg>
+          </button>
+        </div>
+      </div>
 
       {meterPoints && meterPoints.length > 0 && (
         <div className="usage-by-day__mpan-toggles">
@@ -350,7 +400,29 @@ export default function UsageByDay() {
         </p>
       )}
 
-      {!error && rows && hasAnyUsage && (
+      {!error && rows && hasAnyUsage && showChart && (
+        <div className="usage-by-day__chart-section">
+          <div className="usage-by-day__metric-toggle">
+            <button
+              type="button"
+              className={chartMetric === 'kwh' ? 'active' : ''}
+              onClick={() => setChartMetric('kwh')}
+            >
+              Usage (kWh)
+            </button>
+            <button
+              type="button"
+              className={chartMetric === 'cost' ? 'active' : ''}
+              onClick={() => setChartMetric('cost')}
+            >
+              Cost (£)
+            </button>
+          </div>
+          <UsageBarChart rows={rows} meterPoints={includedMeterPoints} metric={chartMetric} />
+        </div>
+      )}
+
+      {!error && rows && hasAnyUsage && showTable && (
         <div className="usage-by-day__table-wrap">
           <table className="usage-by-day__table">
             <thead>
