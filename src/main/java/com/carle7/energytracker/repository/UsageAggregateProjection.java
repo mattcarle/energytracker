@@ -1,6 +1,7 @@
 package com.carle7.energytracker.repository;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 public interface UsageAggregateProjection {
     String getMpan();
@@ -16,4 +17,6 @@ public interface UsageAggregateProjection {
     BigDecimal getCost();
 
     BigDecimal getAvgRate();
+
+    List<RateBreakdown> getBreakdown();
 }

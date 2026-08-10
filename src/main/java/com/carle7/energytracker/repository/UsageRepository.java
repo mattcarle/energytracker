@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -98,4 +99,64 @@ public interface UsageRepository extends JpaRepository<Usage, Long> {
                                                  @Param("fromDate") LocalDate fromDate,
                                                  @Param("toDate") LocalDate toDate,
                                                  @Param("paymentMethods") List<String> paymentMethods);
+
+    @Query(value = """
+            SELECT mp.mpan AS mpan,
+                   CAST(u.interval_from AS DATE) AS usageDate,
+                   r.rate_type AS rateType,
+                   r.value_inc_vat AS rate,
+                   SUM(u.consumption) AS kwh
+            FROM meter_point mp
+                     JOIN agreement a ON mp.id = a.meter_point_id
+                     JOIN usage u ON mp.mpan = u.mpan
+                     JOIN unit_rate_by_half_hour r ON r.valid_from = u.interval_from AND r.agreement_id = a.id
+            WHERE mp.mpan = :mpan
+              AND u.interval_from >= :interval_from
+              AND u.interval_to < :interval_to
+            GROUP BY mp.mpan, CAST(u.interval_from AS DATE), r.rate_type, r.value_inc_vat
+            ORDER BY CAST(u.interval_from AS DATE)
+            """, nativeQuery = true)
+    List<UsageByDayGroupByRateAndRateTypeProjection> findUsageByDayGroupByRateAndRateType(@Param("mpan") String mpan,
+                                                                                            @Param("interval_from") LocalDateTime intervalFrom,
+                                                                                            @Param("interval_to") LocalDateTime intervalTo);
+
+    @Query(value = """
+            SELECT mp.mpan AS mpan,
+                   CAST(DATE_TRUNC('MONTH', u.interval_from) AS DATE) AS usageMonth,
+                   r.rate_type AS rateType,
+                   r.value_inc_vat AS rate,
+                   SUM(u.consumption) AS kwh
+            FROM meter_point mp
+                     JOIN agreement a ON mp.id = a.meter_point_id
+                     JOIN usage u ON mp.mpan = u.mpan
+                     JOIN unit_rate_by_half_hour r ON r.valid_from = u.interval_from AND r.agreement_id = a.id
+            WHERE mp.mpan = :mpan
+              AND u.interval_from >= :interval_from
+              AND u.interval_to < :interval_to
+            GROUP BY mp.mpan, CAST(DATE_TRUNC('MONTH', u.interval_from) AS DATE), r.rate_type, r.value_inc_vat
+            ORDER BY CAST(DATE_TRUNC('MONTH', u.interval_from) AS DATE)
+            """, nativeQuery = true)
+    List<UsageByMonthGroupByRateAndRateTypeProjection> findUsageByMonthGroupByRateAndRateType(@Param("mpan") String mpan,
+                                                                                                @Param("interval_from") LocalDateTime intervalFrom,
+                                                                                                @Param("interval_to") LocalDateTime intervalTo);
+
+    @Query(value = """
+            SELECT mp.mpan AS mpan,
+                   CAST(DATE_TRUNC('YEAR', u.interval_from) AS DATE) AS usageYear,
+                   r.rate_type AS rateType,
+                   r.value_inc_vat AS rate,
+                   SUM(u.consumption) AS kwh
+            FROM meter_point mp
+                     JOIN agreement a ON mp.id = a.meter_point_id
+                     JOIN usage u ON mp.mpan = u.mpan
+                     JOIN unit_rate_by_half_hour r ON r.valid_from = u.interval_from AND r.agreement_id = a.id
+            WHERE mp.mpan = :mpan
+              AND u.interval_from >= :interval_from
+              AND u.interval_to < :interval_to
+            GROUP BY mp.mpan, CAST(DATE_TRUNC('YEAR', u.interval_from) AS DATE), r.rate_type, r.value_inc_vat
+            ORDER BY CAST(DATE_TRUNC('YEAR', u.interval_from) AS DATE)
+            """, nativeQuery = true)
+    List<UsageByYearGroupByRateAndRateTypeProjection> findUsageByYearGroupByRateAndRateType(@Param("mpan") String mpan,
+                                                                                              @Param("interval_from") LocalDateTime intervalFrom,
+                                                                                              @Param("interval_to") LocalDateTime intervalTo);
 }

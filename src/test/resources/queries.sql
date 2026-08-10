@@ -127,3 +127,15 @@ where mp.mpan = 2000016292581
 group by mp.mpan, mp.meter_type, mp.is_export, CAST(z.local_time AS DATE)
 order by  CAST(z.local_time AS DATE)
 ;
+
+select mp.mpan, CAST(DATE_TRUNC('MONTH', u.interval_from) AS DATE) AS usageMonth, r.rate_type, r.value_inc_vat as rate,
+       SUM(u.consumption) AS kwh
+FROM meter_point mp
+         JOIN agreement a ON mp.id = a.meter_point_id
+         JOIN usage u ON mp.mpan = u.mpan
+         JOIN unit_rate_by_half_hour r ON r.valid_from = u.interval_from AND r.agreement_id = a.id
+WHERE mp.mpan = :mpan
+  AND u.interval_from >= :interval_from
+  AND u.interval_to < :interval_to
+GROUP BY mp.mpan, CAST(DATE_TRUNC('MONTH', u.interval_from) AS DATE), r.rate_type, r.value_inc_vat
+ORDER BY CAST(DATE_TRUNC('MONTH', u.interval_from) AS DATE);
