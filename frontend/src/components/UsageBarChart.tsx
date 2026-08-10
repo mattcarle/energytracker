@@ -31,6 +31,15 @@ function stdChgKey(mpan: string): string {
   return `${mpan}_stdChg`
 }
 
+// Electricity import and export share a stackId so they render as one bar per day rather
+// than two side-by-side ones. Combined with stackOffset="sign" on the BarChart below, values
+// sharing a stackId diverge by sign from a common zero baseline - import's positive values
+// stack upward, export's negative values stack downward, in the same bar. Gas keeps its own
+// stackId per meter point, rendering as a separate bar alongside it.
+function stackIdFor(mp: MeterPoint): string {
+  return mp.meterType === 'ELEC' ? 'electricity' : mp.mpan
+}
+
 function formatValue(value: number, metric: ChartMetric): string {
   return metric === 'kwh' ? `${value.toFixed(2)} kWh` : `£${value.toFixed(2)}`
 }
@@ -65,7 +74,7 @@ export default function UsageBarChart({ rows, meterPoints, metric }: UsageBarCha
   return (
     <div className="usage-bar-chart">
       <ResponsiveContainer width="100%" height={360}>
-        <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
+        <BarChart data={data} stackOffset="sign" margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
           <XAxis
             dataKey="dayLabel"
@@ -95,7 +104,7 @@ export default function UsageBarChart({ rows, meterPoints, metric }: UsageBarCha
                 <Bar
                   key={`${mp.mpan}-stdchg-${metric}`}
                   dataKey={stdChgKey(mp.mpan)}
-                  stackId={mp.mpan}
+                  stackId={stackIdFor(mp)}
                   fill="var(--chart-stdchg)"
                   name="Standing charge"
                 />
@@ -103,7 +112,7 @@ export default function UsageBarChart({ rows, meterPoints, metric }: UsageBarCha
               <Bar
                 key={`${mp.mpan}-usage-${metric}`}
                 dataKey={usageKey(mp.mpan)}
-                stackId={mp.mpan}
+                stackId={stackIdFor(mp)}
                 fill={MPAN_COLORS[index % MPAN_COLORS.length]}
                 name={`MPAN ${mp.mpan} (${meterPointLabel(mp)})`}
               />
