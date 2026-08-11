@@ -8,6 +8,8 @@ import com.carle7.energytracker.repository.UsageByHalfHourGroupByRateAndRateType
 import com.carle7.energytracker.repository.UsageByHalfHourProjection;
 import com.carle7.energytracker.repository.UsageByMonthGroupByRateAndRateTypeProjection;
 import com.carle7.energytracker.repository.UsageByMonthProjection;
+import com.carle7.energytracker.repository.UsageByWeekGroupByRateAndRateTypeProjection;
+import com.carle7.energytracker.repository.UsageByWeekProjection;
 import com.carle7.energytracker.repository.UsageByYearGroupByRateAndRateTypeProjection;
 import com.carle7.energytracker.repository.UsageByYearProjection;
 import com.carle7.energytracker.repository.UsageDateRangeProjection;
@@ -87,6 +89,31 @@ public class UsageController {
                 .collect(Collectors.toList());
 
         return new UsageByDayResponse(daysWithBreakdown, computeTotals(days));
+    }
+
+    @GetMapping("/api/usage/by-week")
+    public UsageByWeekResponse getUsageByWeek(
+            @RequestParam String mpan,
+            @RequestParam(required = false) LocalDate fromDate,
+            @RequestParam(required = false) LocalDate toDate,
+            @RequestParam(required = false) List<String> paymentMethods) {
+
+        LocalDate effectiveFromDate = effectiveFromDate(fromDate);
+        LocalDate effectiveToDate = effectiveToDate(toDate);
+        List<String> effectivePaymentMethods = effectivePaymentMethods(paymentMethods);
+
+        List<UsageByWeekProjection> weeks = usageRepository.findUsageByWeek(mpan, effectiveFromDate, effectiveToDate, effectivePaymentMethods);
+
+        List<UsageByWeekGroupByRateAndRateTypeProjection> breakdownRows = usageRepository.findUsageByWeekGroupByRateAndRateType(
+                mpan, effectiveFromDate.atStartOfDay(), effectiveToDate.atStartOfDay());
+        Map<LocalDate, List<RateBreakdown>> breakdownByWeek = breakdownRows.stream()
+                .collect(Collectors.groupingBy(UsageByWeekGroupByRateAndRateTypeProjection::getUsageWeek, Collectors.mapping(UsageController::toRateBreakdown, Collectors.toList())));
+
+        List<UsageByWeekProjection> weeksWithBreakdown = weeks.stream()
+                .map(week -> new WeekProjectionWithBreakdown(week, breakdownByWeek.getOrDefault(week.getUsageWeek(), List.of())))
+                .collect(Collectors.toList());
+
+        return new UsageByWeekResponse(weeksWithBreakdown, computeTotals(weeks));
     }
 
     @GetMapping("/api/usage/by-month")
@@ -206,6 +233,24 @@ public class UsageController {
         }
     }
 
+    public static class UsageByWeekResponse {
+        private final List<UsageByWeekProjection> weeks;
+        private final UsageTotals totals;
+
+        public UsageByWeekResponse(List<UsageByWeekProjection> weeks, UsageTotals totals) {
+            this.weeks = weeks;
+            this.totals = totals;
+        }
+
+        public List<UsageByWeekProjection> getWeeks() {
+            return weeks;
+        }
+
+        public UsageTotals getTotals() {
+            return totals;
+        }
+    }
+
     public static class UsageByMonthResponse {
         private final List<UsageByMonthProjection> months;
         private final UsageTotals totals;
@@ -315,6 +360,61 @@ public class UsageController {
         @Override
         public LocalDate getUsageDate() {
             return delegate.getUsageDate();
+        }
+
+        @Override
+        public String getMpan() {
+            return delegate.getMpan();
+        }
+
+        @Override
+        public String getMeterType() {
+            return delegate.getMeterType();
+        }
+
+        @Override
+        public Boolean getIsExport() {
+            return delegate.getIsExport();
+        }
+
+        @Override
+        public Long getIntervalCount() {
+            return delegate.getIntervalCount();
+        }
+
+        @Override
+        public BigDecimal getKwh() {
+            return delegate.getKwh();
+        }
+
+        @Override
+        public BigDecimal getCost() {
+            return delegate.getCost();
+        }
+
+        @Override
+        public BigDecimal getAvgRate() {
+            return delegate.getAvgRate();
+        }
+
+        @Override
+        public List<RateBreakdown> getBreakdown() {
+            return breakdown;
+        }
+    }
+
+    private static final class WeekProjectionWithBreakdown implements UsageByWeekProjection {
+        private final UsageByWeekProjection delegate;
+        private final List<RateBreakdown> breakdown;
+
+        private WeekProjectionWithBreakdown(UsageByWeekProjection delegate, List<RateBreakdown> breakdown) {
+            this.delegate = delegate;
+            this.breakdown = breakdown;
+        }
+
+        @Override
+        public LocalDate getUsageWeek() {
+            return delegate.getUsageWeek();
         }
 
         @Override

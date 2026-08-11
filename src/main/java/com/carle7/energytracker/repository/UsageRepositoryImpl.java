@@ -92,6 +92,14 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
     }
 
     @Override
+    public List<UsageByWeekProjection> findUsageByWeek(String mpan, LocalDate fromDate, LocalDate toDate, List<String> paymentMethods) {
+        return queryAggregated(Granularity.WEEK, mpan, fromDate, toDate, paymentMethods).stream()
+                .map(t -> AggregateRow.from(t, LocalDate.class))
+                .<UsageByWeekProjection>map(WeekAggregateProjection::new)
+                .toList();
+    }
+
+    @Override
     public List<UsageByMonthProjection> findUsageByMonth(String mpan, LocalDate fromDate, LocalDate toDate, List<String> paymentMethods) {
         return queryAggregated(Granularity.MONTH, mpan, fromDate, toDate, paymentMethods).stream()
                 .map(t -> AggregateRow.from(t, LocalDate.class))
@@ -120,6 +128,14 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
         return queryBreakdown(Granularity.DAY, mpan, intervalFrom, intervalTo).stream()
                 .map(t -> RateTypeRow.from(t, LocalDate.class))
                 .<UsageByDayGroupByRateAndRateTypeProjection>map(DayRateTypeProjection::new)
+                .toList();
+    }
+
+    @Override
+    public List<UsageByWeekGroupByRateAndRateTypeProjection> findUsageByWeekGroupByRateAndRateType(String mpan, LocalDateTime intervalFrom, LocalDateTime intervalTo) {
+        return queryBreakdown(Granularity.WEEK, mpan, intervalFrom, intervalTo).stream()
+                .map(t -> RateTypeRow.from(t, LocalDate.class))
+                .<UsageByWeekGroupByRateAndRateTypeProjection>map(WeekRateTypeProjection::new)
                 .toList();
     }
 
@@ -294,6 +310,53 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
         }
     }
 
+    private record WeekAggregateProjection(AggregateRow<LocalDate> row) implements UsageByWeekProjection {
+        @Override
+        public LocalDate getUsageWeek() {
+            return row.period();
+        }
+
+        @Override
+        public String getMpan() {
+            return row.mpan();
+        }
+
+        @Override
+        public String getMeterType() {
+            return row.meterType();
+        }
+
+        @Override
+        public Boolean getIsExport() {
+            return row.isExport();
+        }
+
+        @Override
+        public Long getIntervalCount() {
+            return row.intervalCount();
+        }
+
+        @Override
+        public BigDecimal getKwh() {
+            return row.kwh();
+        }
+
+        @Override
+        public BigDecimal getCost() {
+            return row.cost();
+        }
+
+        @Override
+        public BigDecimal getAvgRate() {
+            return row.avgRate();
+        }
+
+        @Override
+        public List<RateBreakdown> getBreakdown() {
+            return null;
+        }
+    }
+
     private record MonthAggregateProjection(AggregateRow<LocalDate> row) implements UsageByMonthProjection {
         @Override
         public LocalDate getUsageMonth() {
@@ -418,6 +481,33 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
     private record DayRateTypeProjection(RateTypeRow<LocalDate> row) implements UsageByDayGroupByRateAndRateTypeProjection {
         @Override
         public LocalDate getUsageDate() {
+            return row.period();
+        }
+
+        @Override
+        public String getMpan() {
+            return row.mpan();
+        }
+
+        @Override
+        public String getRateType() {
+            return row.rateType();
+        }
+
+        @Override
+        public BigDecimal getRate() {
+            return row.rate();
+        }
+
+        @Override
+        public BigDecimal getKwh() {
+            return row.kwh();
+        }
+    }
+
+    private record WeekRateTypeProjection(RateTypeRow<LocalDate> row) implements UsageByWeekGroupByRateAndRateTypeProjection {
+        @Override
+        public LocalDate getUsageWeek() {
             return row.period();
         }
 

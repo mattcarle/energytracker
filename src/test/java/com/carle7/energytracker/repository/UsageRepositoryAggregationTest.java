@@ -120,6 +120,29 @@ class UsageRepositoryAggregationTest {
     }
 
     @Test
+    void byWeek_aggregatesAcrossDaysWithinEachIsoWeekStartingMonday() {
+        String mpan = "4234567890123";
+        MeterPoint meterPoint = meterPointRepository.save(new MeterPoint(mpan, false, "ELEC"));
+        Agreement agreement = agreementRepository.save(new Agreement("E-1R-TEST-W", LocalDateTime.parse("2026-01-01T00:00:00"), null, meterPoint.getId()));
+
+        // 2026-01-05 is a Monday. Two slots in that ISO week (different days), one slot in the
+        // following week (starting 2026-01-12).
+        seedSlot(agreement.getId(), mpan, LocalDateTime.parse("2026-01-05T10:00:00"), BigDecimal.valueOf(20), "DIRECT_DEBIT");
+        seedSlot(agreement.getId(), mpan, LocalDateTime.parse("2026-01-08T10:00:00"), BigDecimal.valueOf(20), "DIRECT_DEBIT");
+        seedSlot(agreement.getId(), mpan, LocalDateTime.parse("2026-01-12T10:00:00"), BigDecimal.valueOf(20), "DIRECT_DEBIT");
+
+        List<UsageByWeekProjection> results = usageRepository.findUsageByWeek(
+                mpan, LocalDate.parse("2026-01-05"), LocalDate.parse("2026-01-19"), List.of("DIRECT_DEBIT", "NA"));
+
+        assertThat(results).hasSize(2);
+        assertThat(results.get(0).getUsageWeek()).isEqualTo(LocalDate.parse("2026-01-05"));
+        assertThat(results.get(0).getIntervalCount()).isEqualTo(2L);
+        assertThat(results.get(0).getKwh()).isEqualByComparingTo("2.0000");
+        assertThat(results.get(1).getUsageWeek()).isEqualTo(LocalDate.parse("2026-01-12"));
+        assertThat(results.get(1).getIntervalCount()).isEqualTo(1L);
+    }
+
+    @Test
     void byMonth_aggregatesAcrossDaysWithinEachCalendarMonth() {
         String mpan = "2234567890123";
         MeterPoint meterPoint = meterPointRepository.save(new MeterPoint(mpan, false, "ELEC"));

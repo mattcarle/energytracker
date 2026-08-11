@@ -10,6 +10,8 @@ enum Granularity {
     // of them. Its period column is a full timestamp (LocalDateTime), not a DATE like the others.
     HALF_HOUR("z.local_time"),
     DAY("CAST(z.local_time AS DATE)"),
+    // H2's DATE_TRUNC('WEEK', ...) truncates to the ISO-8601 week start, i.e. Monday.
+    WEEK("CAST(DATE_TRUNC('WEEK', z.local_time) AS DATE)"),
     MONTH("CAST(DATE_TRUNC('MONTH', z.local_time) AS DATE)"),
     YEAR("CAST(DATE_TRUNC('YEAR', z.local_time) AS DATE)");
 

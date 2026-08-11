@@ -13,6 +13,8 @@ interface UsageRepositoryCustom {
 
     List<UsageByDayProjection> findUsageByDay(String mpan, LocalDate fromDate, LocalDate toDate, List<String> paymentMethods);
 
+    List<UsageByWeekProjection> findUsageByWeek(String mpan, LocalDate fromDate, LocalDate toDate, List<String> paymentMethods);
+
     List<UsageByMonthProjection> findUsageByMonth(String mpan, LocalDate fromDate, LocalDate toDate, List<String> paymentMethods);
 
     List<UsageByYearProjection> findUsageByYear(String mpan, LocalDate fromDate, LocalDate toDate, List<String> paymentMethods);
@@ -20,6 +22,8 @@ interface UsageRepositoryCustom {
     List<UsageByHalfHourGroupByRateAndRateTypeProjection> findUsageByHalfHourGroupByRateAndRateType(String mpan, LocalDateTime intervalFrom, LocalDateTime intervalTo);
 
     List<UsageByDayGroupByRateAndRateTypeProjection> findUsageByDayGroupByRateAndRateType(String mpan, LocalDateTime intervalFrom, LocalDateTime intervalTo);
+
+    List<UsageByWeekGroupByRateAndRateTypeProjection> findUsageByWeekGroupByRateAndRateType(String mpan, LocalDateTime intervalFrom, LocalDateTime intervalTo);
 
     List<UsageByMonthGroupByRateAndRateTypeProjection> findUsageByMonthGroupByRateAndRateType(String mpan, LocalDateTime intervalFrom, LocalDateTime intervalTo);
 

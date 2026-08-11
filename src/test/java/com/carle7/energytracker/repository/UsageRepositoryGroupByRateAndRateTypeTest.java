@@ -101,6 +101,33 @@ class UsageRepositoryGroupByRateAndRateTypeTest {
     }
 
     @Test
+    void byWeek_aggregatesAcrossDaysSeparatelyPerRateTypeWithinEachIsoWeek() {
+        String mpan = "8734567890123";
+        MeterPoint meterPoint = meterPointRepository.save(new MeterPoint(mpan, false, "ELEC"));
+        Agreement agreement = agreementRepository.save(
+                new Agreement("E-2R-DAY-NIGHT-TEST-W", LocalDateTime.parse("2026-01-01T00:00:00"), null, meterPoint.getId()));
+
+        // 2026-01-05 is a Monday - both slots below fall in that ISO week.
+        seedSlot(agreement.getId(), mpan, LocalDateTime.parse("2026-01-05T09:00:00"), BigDecimal.valueOf(2), "DAY", BigDecimal.valueOf(20));
+        seedSlot(agreement.getId(), mpan, LocalDateTime.parse("2026-01-08T23:00:00"), BigDecimal.valueOf(4), "NIGHT", BigDecimal.valueOf(10));
+        // Following ISO week (starting 2026-01-12) - must not be merged in.
+        seedSlot(agreement.getId(), mpan, LocalDateTime.parse("2026-01-12T09:00:00"), BigDecimal.valueOf(99), "DAY", BigDecimal.valueOf(20));
+
+        List<UsageByWeekGroupByRateAndRateTypeProjection> results = usageRepository.findUsageByWeekGroupByRateAndRateType(
+                mpan, LocalDateTime.parse("2026-01-05T00:00:00"), LocalDateTime.parse("2026-01-12T00:00:00"));
+
+        assertThat(results).hasSize(2);
+        UsageByWeekGroupByRateAndRateTypeProjection dayRow = results.stream()
+                .filter(r -> r.getRateType().equals("DAY")).findFirst().orElseThrow();
+        assertThat(dayRow.getUsageWeek()).isEqualTo(java.time.LocalDate.parse("2026-01-05"));
+        assertThat(dayRow.getKwh()).isEqualByComparingTo("2.0000");
+
+        UsageByWeekGroupByRateAndRateTypeProjection nightRow = results.stream()
+                .filter(r -> r.getRateType().equals("NIGHT")).findFirst().orElseThrow();
+        assertThat(nightRow.getKwh()).isEqualByComparingTo("4.0000");
+    }
+
+    @Test
     void byMonth_aggregatesAcrossDaysSeparatelyPerRateType() {
         String mpan = "6234567890123";
         MeterPoint meterPoint = meterPointRepository.save(new MeterPoint(mpan, false, "ELEC"));
