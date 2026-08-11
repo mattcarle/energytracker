@@ -7,6 +7,15 @@
   text-align: left;
 }
 
+.manage-users h1 {
+  font-size: 26px;
+  margin: 0;
+}
+
+.manage-users h2 {
+  margin-top: 32px;
+}
+
 .manage-users__error {
   color: #d64545;
 }
