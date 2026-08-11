@@ -7,6 +7,9 @@ import java.util.stream.Collectors;
 public interface UsageAggregateProjection {
 
     BigDecimal TWO = BigDecimal.valueOf(2);
+    // Breakdown rows carry the raw pence-per-kWh rate (unit rate straight from Octopus), while
+    // getCost()/getAvgRate() are already converted to pounds - match that conversion here too.
+    BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
     String getMpan();
 
@@ -44,7 +47,9 @@ public interface UsageAggregateProjection {
         if (offPeakRows == null) {
             return null;
         }
-        return offPeakRows.stream().map(row -> row.getRate().multiply(row.getKwh())).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return offPeakRows.stream()
+                .map(row -> row.getRate().multiply(row.getKwh()).divide(HUNDRED))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private List<RateBreakdown> offPeakRows() {
