@@ -22,6 +22,8 @@ public interface StandingChargeByDayRepository extends JpaRepository<StandingCha
             WHERE mp.mpan = :mpan
               AND z.local_time >= :fromDate
               AND z.local_time < :toDate
+              AND sc.valid_from >= a.valid_from
+              AND (sc.valid_from < a.valid_to or a.valid_to is null)
               AND sc.payment_method IN (:paymentMethods)
             GROUP BY CAST(z.local_time AS DATE)
             ORDER BY CAST(z.local_time AS DATE)
