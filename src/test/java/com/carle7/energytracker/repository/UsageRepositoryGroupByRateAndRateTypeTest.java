@@ -36,6 +36,38 @@ class UsageRepositoryGroupByRateAndRateTypeTest {
     private UtcToLocalRepository utcToLocalRepository;
 
     @Test
+    void byHalfHour_returnsOneRateTypeRowPerInterval() {
+        String mpan = "9234567890123";
+        MeterPoint meterPoint = meterPointRepository.save(new MeterPoint(mpan, false, "ELEC"));
+        Agreement agreement = agreementRepository.save(
+                new Agreement("E-2R-DAY-NIGHT-TEST-HH", LocalDateTime.parse("2026-01-01T00:00:00"), null, meterPoint.getId()));
+
+        seedSlot(agreement.getId(), mpan, LocalDateTime.parse("2026-01-05T09:00:00"), BigDecimal.valueOf(2), "DAY", BigDecimal.valueOf(20));
+        seedSlot(agreement.getId(), mpan, LocalDateTime.parse("2026-01-05T23:00:00"), BigDecimal.valueOf(1), "NIGHT", BigDecimal.valueOf(10));
+
+        // Outside the requested interval bounds - must be excluded.
+        seedSlot(agreement.getId(), mpan, LocalDateTime.parse("2026-01-06T00:00:00"), BigDecimal.valueOf(99), "DAY", BigDecimal.valueOf(20));
+
+        List<UsageByHalfHourGroupByRateAndRateTypeProjection> results = usageRepository.findUsageByHalfHourGroupByRateAndRateType(
+                mpan, LocalDateTime.parse("2026-01-05T00:00:00"), LocalDateTime.parse("2026-01-06T00:00:00"));
+
+        assertThat(results).hasSize(2);
+
+        UsageByHalfHourGroupByRateAndRateTypeProjection dayRow = results.stream()
+                .filter(r -> r.getUsageInterval().equals(LocalDateTime.parse("2026-01-05T09:00:00"))).findFirst().orElseThrow();
+        assertThat(dayRow.getMpan()).isEqualTo(mpan);
+        assertThat(dayRow.getRateType()).isEqualTo("DAY");
+        assertThat(dayRow.getRate()).isEqualByComparingTo("20");
+        assertThat(dayRow.getKwh()).isEqualByComparingTo("2.0000");
+
+        UsageByHalfHourGroupByRateAndRateTypeProjection nightRow = results.stream()
+                .filter(r -> r.getUsageInterval().equals(LocalDateTime.parse("2026-01-05T23:00:00"))).findFirst().orElseThrow();
+        assertThat(nightRow.getRateType()).isEqualTo("NIGHT");
+        assertThat(nightRow.getRate()).isEqualByComparingTo("10");
+        assertThat(nightRow.getKwh()).isEqualByComparingTo("1.0000");
+    }
+
+    @Test
     void byDay_sumsConsumptionSeparatelyPerRateTypeAndFiltersByIntervalBounds() {
         String mpan = "5234567890123";
         MeterPoint meterPoint = meterPointRepository.save(new MeterPoint(mpan, false, "ELEC"));

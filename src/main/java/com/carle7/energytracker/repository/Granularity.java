@@ -5,6 +5,10 @@ package com.carle7.energytracker.repository;
 // replaces) so every grain-specific query is built from one shared template instead of one
 // hand-copied query per grain.
 enum Granularity {
+    // Unlike the other grains, HALF_HOUR doesn't truncate - z.local_time is already the finest
+    // resolution usage is recorded at, so each row IS a half-hour interval rather than a bucket
+    // of them. Its period column is a full timestamp (LocalDateTime), not a DATE like the others.
+    HALF_HOUR("z.local_time"),
     DAY("CAST(z.local_time AS DATE)"),
     MONTH("CAST(DATE_TRUNC('MONTH', z.local_time) AS DATE)"),
     YEAR("CAST(DATE_TRUNC('YEAR', z.local_time) AS DATE)");

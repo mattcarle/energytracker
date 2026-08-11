@@ -37,6 +37,46 @@ class UsageRepositoryAggregationTest {
     private UtcToLocalRepository utcToLocalRepository;
 
     @Test
+    void byHalfHour_returnsOneRowPerInterval_filteringByPaymentMethodAndDateRange() {
+        String mpan = "8234567890123";
+        MeterPoint meterPoint = meterPointRepository.save(new MeterPoint(mpan, false, "ELEC"));
+        Agreement agreement = agreementRepository.save(new Agreement("E-1R-TEST-HH", LocalDateTime.parse("2026-01-01T00:00:00"), null, meterPoint.getId()));
+
+        // Two DIRECT_DEBIT half-hour slots on Jan 5, in range.
+        List<LocalDateTime> inRangeSlots = List.of(
+                LocalDateTime.parse("2026-01-05T10:00:00"),
+                LocalDateTime.parse("2026-01-05T10:30:00")
+        );
+        for (LocalDateTime slot : inRangeSlots) {
+            seedSlot(agreement.getId(), mpan, slot, BigDecimal.valueOf(20), "DIRECT_DEBIT");
+        }
+
+        // A NON_DIRECT_DEBIT slot that must be excluded by the default payment method filter.
+        seedSlot(agreement.getId(), mpan, LocalDateTime.parse("2026-01-05T11:00:00"), BigDecimal.valueOf(20), "NON_DIRECT_DEBIT");
+
+        // A DIRECT_DEBIT slot on Jan 6 that must be excluded by the date range filter.
+        seedSlot(agreement.getId(), mpan, LocalDateTime.parse("2026-01-06T10:00:00"), BigDecimal.valueOf(20), "DIRECT_DEBIT");
+
+        List<UsageByHalfHourProjection> results = usageRepository.findUsageByHalfHour(
+                mpan, LocalDate.parse("2026-01-05"), LocalDate.parse("2026-01-06"), List.of("DIRECT_DEBIT", "NA"));
+
+        assertThat(results).hasSize(2);
+
+        UsageByHalfHourProjection first = results.get(0);
+        assertThat(first.getMpan()).isEqualTo(mpan);
+        assertThat(first.getMeterType()).isEqualTo("ELEC");
+        assertThat(first.getIsExport()).isFalse();
+        assertThat(first.getUsageInterval()).isEqualTo(LocalDateTime.parse("2026-01-05T10:00:00"));
+        assertThat(first.getIntervalCount()).isEqualTo(1L);
+        assertThat(first.getKwh()).isEqualByComparingTo("1.0000");
+        assertThat(first.getCost()).isEqualByComparingTo("0.2000");
+        assertThat(first.getAvgRate()).isEqualByComparingTo("0.2000");
+
+        UsageByHalfHourProjection second = results.get(1);
+        assertThat(second.getUsageInterval()).isEqualTo(LocalDateTime.parse("2026-01-05T10:30:00"));
+    }
+
+    @Test
     void byDay_aggregatesConsumptionAndCostByLocalDay_filteringByPaymentMethodAndDateRange() {
         String mpan = "1234567890123";
         MeterPoint meterPoint = meterPointRepository.save(new MeterPoint(mpan, false, "ELEC"));

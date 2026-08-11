@@ -76,9 +76,17 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
     }
 
     @Override
+    public List<UsageByHalfHourProjection> findUsageByHalfHour(String mpan, LocalDate fromDate, LocalDate toDate, List<String> paymentMethods) {
+        return queryAggregated(Granularity.HALF_HOUR, mpan, fromDate, toDate, paymentMethods).stream()
+                .map(t -> AggregateRow.from(t, LocalDateTime.class))
+                .<UsageByHalfHourProjection>map(HalfHourAggregateProjection::new)
+                .toList();
+    }
+
+    @Override
     public List<UsageByDayProjection> findUsageByDay(String mpan, LocalDate fromDate, LocalDate toDate, List<String> paymentMethods) {
         return queryAggregated(Granularity.DAY, mpan, fromDate, toDate, paymentMethods).stream()
-                .map(AggregateRow::from)
+                .map(t -> AggregateRow.from(t, LocalDate.class))
                 .<UsageByDayProjection>map(DayAggregateProjection::new)
                 .toList();
     }
@@ -86,7 +94,7 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
     @Override
     public List<UsageByMonthProjection> findUsageByMonth(String mpan, LocalDate fromDate, LocalDate toDate, List<String> paymentMethods) {
         return queryAggregated(Granularity.MONTH, mpan, fromDate, toDate, paymentMethods).stream()
-                .map(AggregateRow::from)
+                .map(t -> AggregateRow.from(t, LocalDate.class))
                 .<UsageByMonthProjection>map(MonthAggregateProjection::new)
                 .toList();
     }
@@ -94,15 +102,23 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
     @Override
     public List<UsageByYearProjection> findUsageByYear(String mpan, LocalDate fromDate, LocalDate toDate, List<String> paymentMethods) {
         return queryAggregated(Granularity.YEAR, mpan, fromDate, toDate, paymentMethods).stream()
-                .map(AggregateRow::from)
+                .map(t -> AggregateRow.from(t, LocalDate.class))
                 .<UsageByYearProjection>map(YearAggregateProjection::new)
+                .toList();
+    }
+
+    @Override
+    public List<UsageByHalfHourGroupByRateAndRateTypeProjection> findUsageByHalfHourGroupByRateAndRateType(String mpan, LocalDateTime intervalFrom, LocalDateTime intervalTo) {
+        return queryBreakdown(Granularity.HALF_HOUR, mpan, intervalFrom, intervalTo).stream()
+                .map(t -> RateTypeRow.from(t, LocalDateTime.class))
+                .<UsageByHalfHourGroupByRateAndRateTypeProjection>map(HalfHourRateTypeProjection::new)
                 .toList();
     }
 
     @Override
     public List<UsageByDayGroupByRateAndRateTypeProjection> findUsageByDayGroupByRateAndRateType(String mpan, LocalDateTime intervalFrom, LocalDateTime intervalTo) {
         return queryBreakdown(Granularity.DAY, mpan, intervalFrom, intervalTo).stream()
-                .map(RateTypeRow::from)
+                .map(t -> RateTypeRow.from(t, LocalDate.class))
                 .<UsageByDayGroupByRateAndRateTypeProjection>map(DayRateTypeProjection::new)
                 .toList();
     }
@@ -110,7 +126,7 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
     @Override
     public List<UsageByMonthGroupByRateAndRateTypeProjection> findUsageByMonthGroupByRateAndRateType(String mpan, LocalDateTime intervalFrom, LocalDateTime intervalTo) {
         return queryBreakdown(Granularity.MONTH, mpan, intervalFrom, intervalTo).stream()
-                .map(RateTypeRow::from)
+                .map(t -> RateTypeRow.from(t, LocalDate.class))
                 .<UsageByMonthGroupByRateAndRateTypeProjection>map(MonthRateTypeProjection::new)
                 .toList();
     }
@@ -118,7 +134,7 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
     @Override
     public List<UsageByYearGroupByRateAndRateTypeProjection> findUsageByYearGroupByRateAndRateType(String mpan, LocalDateTime intervalFrom, LocalDateTime intervalTo) {
         return queryBreakdown(Granularity.YEAR, mpan, intervalFrom, intervalTo).stream()
-                .map(RateTypeRow::from)
+                .map(t -> RateTypeRow.from(t, LocalDate.class))
                 .<UsageByYearGroupByRateAndRateTypeProjection>map(YearRateTypeProjection::new)
                 .toList();
     }
@@ -149,14 +165,18 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
         return query.getResultList().stream().map(Tuple.class::cast).toList();
     }
 
-    private record AggregateRow(String mpan, String meterType, Boolean isExport, LocalDate period,
-                                 Long intervalCount, BigDecimal kwh, BigDecimal cost, BigDecimal avgRate) {
-        static AggregateRow from(Tuple t) {
-            return new AggregateRow(
+    // Generic over the period column's Java type - LocalDate for DAY/MONTH/YEAR (all CAST(...
+    // AS DATE)), LocalDateTime for HALF_HOUR (the raw, untruncated timestamp). The grain itself
+    // only ever determines the SQL expression (see Granularity); this is the one place that
+    // distinction shows up on the Java side.
+    private record AggregateRow<P>(String mpan, String meterType, Boolean isExport, P period,
+                                    Long intervalCount, BigDecimal kwh, BigDecimal cost, BigDecimal avgRate) {
+        static <P> AggregateRow<P> from(Tuple t, Class<P> periodType) {
+            return new AggregateRow<>(
                     t.get("mpan", String.class),
                     t.get("meterType", String.class),
                     t.get("isExport", Boolean.class),
-                    t.get("period", LocalDate.class),
+                    t.get("period", periodType),
                     t.get("intervalCount", Long.class),
                     t.get("kwh", BigDecimal.class),
                     t.get("cost", BigDecimal.class),
@@ -164,11 +184,11 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
         }
     }
 
-    private record RateTypeRow(String mpan, LocalDate period, String rateType, BigDecimal rate, BigDecimal kwh) {
-        static RateTypeRow from(Tuple t) {
-            return new RateTypeRow(
+    private record RateTypeRow<P>(String mpan, P period, String rateType, BigDecimal rate, BigDecimal kwh) {
+        static <P> RateTypeRow<P> from(Tuple t, Class<P> periodType) {
+            return new RateTypeRow<>(
                     t.get("mpan", String.class),
-                    t.get("period", LocalDate.class),
+                    t.get("period", periodType),
                     t.get("rateType", String.class),
                     t.get("rate", BigDecimal.class),
                     t.get("kwh", BigDecimal.class));
@@ -180,7 +200,54 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
     // separate query, before touching getBreakdown()/getKwhOffPeak()/getCostOffPeak(). Returning
     // null here mirrors that dead path rather than guessing at a value, and is handled safely -
     // UsageAggregateProjection's off-peak default methods already null-check the breakdown.
-    private record DayAggregateProjection(AggregateRow row) implements UsageByDayProjection {
+    private record HalfHourAggregateProjection(AggregateRow<LocalDateTime> row) implements UsageByHalfHourProjection {
+        @Override
+        public LocalDateTime getUsageInterval() {
+            return row.period();
+        }
+
+        @Override
+        public String getMpan() {
+            return row.mpan();
+        }
+
+        @Override
+        public String getMeterType() {
+            return row.meterType();
+        }
+
+        @Override
+        public Boolean getIsExport() {
+            return row.isExport();
+        }
+
+        @Override
+        public Long getIntervalCount() {
+            return row.intervalCount();
+        }
+
+        @Override
+        public BigDecimal getKwh() {
+            return row.kwh();
+        }
+
+        @Override
+        public BigDecimal getCost() {
+            return row.cost();
+        }
+
+        @Override
+        public BigDecimal getAvgRate() {
+            return row.avgRate();
+        }
+
+        @Override
+        public List<RateBreakdown> getBreakdown() {
+            return null;
+        }
+    }
+
+    private record DayAggregateProjection(AggregateRow<LocalDate> row) implements UsageByDayProjection {
         @Override
         public LocalDate getUsageDate() {
             return row.period();
@@ -227,7 +294,7 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
         }
     }
 
-    private record MonthAggregateProjection(AggregateRow row) implements UsageByMonthProjection {
+    private record MonthAggregateProjection(AggregateRow<LocalDate> row) implements UsageByMonthProjection {
         @Override
         public LocalDate getUsageMonth() {
             return row.period();
@@ -274,7 +341,7 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
         }
     }
 
-    private record YearAggregateProjection(AggregateRow row) implements UsageByYearProjection {
+    private record YearAggregateProjection(AggregateRow<LocalDate> row) implements UsageByYearProjection {
         @Override
         public LocalDate getUsageYear() {
             return row.period();
@@ -321,7 +388,34 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
         }
     }
 
-    private record DayRateTypeProjection(RateTypeRow row) implements UsageByDayGroupByRateAndRateTypeProjection {
+    private record HalfHourRateTypeProjection(RateTypeRow<LocalDateTime> row) implements UsageByHalfHourGroupByRateAndRateTypeProjection {
+        @Override
+        public LocalDateTime getUsageInterval() {
+            return row.period();
+        }
+
+        @Override
+        public String getMpan() {
+            return row.mpan();
+        }
+
+        @Override
+        public String getRateType() {
+            return row.rateType();
+        }
+
+        @Override
+        public BigDecimal getRate() {
+            return row.rate();
+        }
+
+        @Override
+        public BigDecimal getKwh() {
+            return row.kwh();
+        }
+    }
+
+    private record DayRateTypeProjection(RateTypeRow<LocalDate> row) implements UsageByDayGroupByRateAndRateTypeProjection {
         @Override
         public LocalDate getUsageDate() {
             return row.period();
@@ -348,7 +442,7 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
         }
     }
 
-    private record MonthRateTypeProjection(RateTypeRow row) implements UsageByMonthGroupByRateAndRateTypeProjection {
+    private record MonthRateTypeProjection(RateTypeRow<LocalDate> row) implements UsageByMonthGroupByRateAndRateTypeProjection {
         @Override
         public LocalDate getUsageMonth() {
             return row.period();
@@ -375,7 +469,7 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
         }
     }
 
-    private record YearRateTypeProjection(RateTypeRow row) implements UsageByYearGroupByRateAndRateTypeProjection {
+    private record YearRateTypeProjection(RateTypeRow<LocalDate> row) implements UsageByYearGroupByRateAndRateTypeProjection {
         @Override
         public LocalDate getUsageYear() {
             return row.period();

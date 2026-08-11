@@ -9,11 +9,15 @@ import java.util.List;
 // changes - only how these rows get built moved, not the public contract.
 interface UsageRepositoryCustom {
 
+    List<UsageByHalfHourProjection> findUsageByHalfHour(String mpan, LocalDate fromDate, LocalDate toDate, List<String> paymentMethods);
+
     List<UsageByDayProjection> findUsageByDay(String mpan, LocalDate fromDate, LocalDate toDate, List<String> paymentMethods);
 
     List<UsageByMonthProjection> findUsageByMonth(String mpan, LocalDate fromDate, LocalDate toDate, List<String> paymentMethods);
 
     List<UsageByYearProjection> findUsageByYear(String mpan, LocalDate fromDate, LocalDate toDate, List<String> paymentMethods);
+
+    List<UsageByHalfHourGroupByRateAndRateTypeProjection> findUsageByHalfHourGroupByRateAndRateType(String mpan, LocalDateTime intervalFrom, LocalDateTime intervalTo);
 
     List<UsageByDayGroupByRateAndRateTypeProjection> findUsageByDayGroupByRateAndRateType(String mpan, LocalDateTime intervalFrom, LocalDateTime intervalTo);
 

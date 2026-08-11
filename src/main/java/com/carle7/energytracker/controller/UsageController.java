@@ -4,6 +4,8 @@ import com.carle7.energytracker.repository.RateBreakdown;
 import com.carle7.energytracker.repository.UsageAggregateProjection;
 import com.carle7.energytracker.repository.UsageByDayGroupByRateAndRateTypeProjection;
 import com.carle7.energytracker.repository.UsageByDayProjection;
+import com.carle7.energytracker.repository.UsageByHalfHourGroupByRateAndRateTypeProjection;
+import com.carle7.energytracker.repository.UsageByHalfHourProjection;
 import com.carle7.energytracker.repository.UsageByMonthGroupByRateAndRateTypeProjection;
 import com.carle7.energytracker.repository.UsageByMonthProjection;
 import com.carle7.energytracker.repository.UsageByYearGroupByRateAndRateTypeProjection;
@@ -19,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -34,6 +37,31 @@ public class UsageController {
     @GetMapping("/api/usage/date-range")
     public List<UsageDateRangeProjection> getUsageDateRange() {
         return usageRepository.findDateRangeByMpan();
+    }
+
+    @GetMapping("/api/usage/by-half-hour")
+    public UsageByHalfHourResponse getUsageByHalfHour(
+            @RequestParam String mpan,
+            @RequestParam(required = false) LocalDate fromDate,
+            @RequestParam(required = false) LocalDate toDate,
+            @RequestParam(required = false) List<String> paymentMethods) {
+
+        LocalDate effectiveFromDate = effectiveFromDate(fromDate);
+        LocalDate effectiveToDate = effectiveToDate(toDate);
+        List<String> effectivePaymentMethods = effectivePaymentMethods(paymentMethods);
+
+        List<UsageByHalfHourProjection> halfHours = usageRepository.findUsageByHalfHour(mpan, effectiveFromDate, effectiveToDate, effectivePaymentMethods);
+
+        List<UsageByHalfHourGroupByRateAndRateTypeProjection> breakdownRows = usageRepository.findUsageByHalfHourGroupByRateAndRateType(
+                mpan, effectiveFromDate.atStartOfDay(), effectiveToDate.atStartOfDay());
+        Map<LocalDateTime, List<RateBreakdown>> breakdownByInterval = breakdownRows.stream()
+                .collect(Collectors.groupingBy(UsageByHalfHourGroupByRateAndRateTypeProjection::getUsageInterval, Collectors.mapping(UsageController::toRateBreakdown, Collectors.toList())));
+
+        List<UsageByHalfHourProjection> halfHoursWithBreakdown = halfHours.stream()
+                .map(halfHour -> new HalfHourProjectionWithBreakdown(halfHour, breakdownByInterval.getOrDefault(halfHour.getUsageInterval(), List.of())))
+                .collect(Collectors.toList());
+
+        return new UsageByHalfHourResponse(halfHoursWithBreakdown, computeTotals(halfHours));
     }
 
     @GetMapping("/api/usage/by-day")
@@ -142,6 +170,24 @@ public class UsageController {
         return new UsageTotals(intervalCount, kwh, cost, avgRate);
     }
 
+    public static class UsageByHalfHourResponse {
+        private final List<UsageByHalfHourProjection> halfHours;
+        private final UsageTotals totals;
+
+        public UsageByHalfHourResponse(List<UsageByHalfHourProjection> halfHours, UsageTotals totals) {
+            this.halfHours = halfHours;
+            this.totals = totals;
+        }
+
+        public List<UsageByHalfHourProjection> getHalfHours() {
+            return halfHours;
+        }
+
+        public UsageTotals getTotals() {
+            return totals;
+        }
+    }
+
     public static class UsageByDayResponse {
         private final List<UsageByDayProjection> days;
         private final UsageTotals totals;
@@ -202,6 +248,61 @@ public class UsageController {
     // These delegate every other getter to that original projection and supply the breakdown
     // list themselves, so the JSON shape stays identical to before with breakdown as a normal
     // sibling field, rather than introducing a wrapper object around each row.
+    private static final class HalfHourProjectionWithBreakdown implements UsageByHalfHourProjection {
+        private final UsageByHalfHourProjection delegate;
+        private final List<RateBreakdown> breakdown;
+
+        private HalfHourProjectionWithBreakdown(UsageByHalfHourProjection delegate, List<RateBreakdown> breakdown) {
+            this.delegate = delegate;
+            this.breakdown = breakdown;
+        }
+
+        @Override
+        public LocalDateTime getUsageInterval() {
+            return delegate.getUsageInterval();
+        }
+
+        @Override
+        public String getMpan() {
+            return delegate.getMpan();
+        }
+
+        @Override
+        public String getMeterType() {
+            return delegate.getMeterType();
+        }
+
+        @Override
+        public Boolean getIsExport() {
+            return delegate.getIsExport();
+        }
+
+        @Override
+        public Long getIntervalCount() {
+            return delegate.getIntervalCount();
+        }
+
+        @Override
+        public BigDecimal getKwh() {
+            return delegate.getKwh();
+        }
+
+        @Override
+        public BigDecimal getCost() {
+            return delegate.getCost();
+        }
+
+        @Override
+        public BigDecimal getAvgRate() {
+            return delegate.getAvgRate();
+        }
+
+        @Override
+        public List<RateBreakdown> getBreakdown() {
+            return breakdown;
+        }
+    }
+
     private static final class DayProjectionWithBreakdown implements UsageByDayProjection {
         private final UsageByDayProjection delegate;
         private final List<RateBreakdown> breakdown;
