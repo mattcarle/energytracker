@@ -1,8 +1,26 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { getMeterPoints, getStandingChargesByDay, getUsageByDay } from '../api/client'
 import type { MeterPoint } from '../api/types'
-import UsageBarChart, { type ChartMetric } from '../components/UsageBarChart'
+import UsageBarChart from '../components/UsageBarChart'
+import NetUsageBarChart from '../components/NetUsageBarChart'
 import './UsageByDay.css'
+
+type ChartView = 'usage' | 'cost' | 'netUsage' | 'netCost'
+
+const CHART_VIEWS: { view: ChartView; label: string }[] = [
+  { view: 'usage', label: 'Usage (kWh)' },
+  { view: 'cost', label: 'Cost (£)' },
+  { view: 'netUsage', label: 'Net Usage (kWh)' },
+  { view: 'netCost', label: 'Net Cost (£)' },
+]
+
+function isNetView(view: ChartView): boolean {
+  return view === 'netUsage' || view === 'netCost'
+}
+
+function isKwhView(view: ChartView): boolean {
+  return view === 'usage' || view === 'netUsage'
+}
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -139,7 +157,7 @@ export default function UsageByDay() {
 
   const [showChart, setShowChart] = useState(true)
   const [showTable, setShowTable] = useState(true)
-  const [chartMetric, setChartMetric] = useState<ChartMetric>('kwh')
+  const [chartView, setChartView] = useState<ChartView>('usage')
 
   useEffect(() => {
     let cancelled = false
@@ -461,33 +479,37 @@ export default function UsageByDay() {
         <div className="usage-by-day__chart-section">
           <div className="usage-by-day__chart-toolbar">
             <div className="usage-by-day__metric-toggle">
-              <button
-                type="button"
-                className={chartMetric === 'kwh' ? 'active' : ''}
-                onClick={() => setChartMetric('kwh')}
-              >
-                Usage (kWh)
-              </button>
-              <button
-                type="button"
-                className={chartMetric === 'cost' ? 'active' : ''}
-                onClick={() => setChartMetric('cost')}
-              >
-                Cost (£)
-              </button>
+              {CHART_VIEWS.map(({ view, label }) => (
+                <button
+                  key={view}
+                  type="button"
+                  className={chartView === view ? 'active' : ''}
+                  onClick={() => setChartView(view)}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
             {chartTotal && (
               <div className="usage-by-day__chart-total">
-                Total: {chartMetric === 'kwh' ? `${formatKwh(chartTotal.kwh)} kWh` : `£${formatCost(chartTotal.total)}`}
+                Total: {isKwhView(chartView) ? `${formatKwh(chartTotal.kwh)} kWh` : `£${formatCost(chartTotal.total)}`}
               </div>
             )}
           </div>
-          <UsageBarChart
-            rows={rows}
-            meterPoints={includedMeterPoints}
-            metric={chartMetric}
-            offPeakAvailableByMpan={offPeakAvailableByMpan ?? undefined}
-          />
+          {isNetView(chartView) ? (
+            <NetUsageBarChart
+              rows={rows}
+              meterPoints={includedMeterPoints}
+              metric={isKwhView(chartView) ? 'kwh' : 'cost'}
+            />
+          ) : (
+            <UsageBarChart
+              rows={rows}
+              meterPoints={includedMeterPoints}
+              metric={isKwhView(chartView) ? 'kwh' : 'cost'}
+              offPeakAvailableByMpan={offPeakAvailableByMpan ?? undefined}
+            />
+          )}
         </div>
       )}
 
