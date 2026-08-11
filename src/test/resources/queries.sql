@@ -139,3 +139,24 @@ WHERE mp.mpan = :mpan
   AND u.interval_to < :interval_to
 GROUP BY mp.mpan, CAST(DATE_TRUNC('MONTH', u.interval_from) AS DATE), r.rate_type, r.value_inc_vat
 ORDER BY CAST(DATE_TRUNC('MONTH', u.interval_from) AS DATE);
+
+
+SELECT mp.mpan AS mpan,
+       mp.meter_type AS meterType,
+       mp.is_export AS isExport,
+       z.local_time,
+       COUNT(*) AS intervalCount,
+       SUM(u.consumption) AS kwh,
+       SUM(u.consumption * r.value_inc_vat / 100) AS cost,
+       SUM(u.consumption * r.value_inc_vat / 100) / NULLIF(SUM(u.consumption), 0) AS avgRate
+FROM meter_point mp
+         JOIN agreement a ON mp.id = a.meter_point_id
+         JOIN usage u ON mp.mpan = u.mpan
+         JOIN utc_to_local z ON u.interval_from = z.local_time
+         JOIN unit_rate_by_half_hour r ON r.valid_from = z.utc_time AND r.agreement_id = a.id
+WHERE mp.mpan = '2000016292581'
+  AND z.local_time >= '2026-08-05'
+  AND z.local_time < '2026-08-06'
+GROUP BY mp.mpan, mp.meter_type, mp.is_export, z.local_time
+ORDER BY z.local_time
+

@@ -4,6 +4,7 @@ import com.carle7.energytracker.model.Agreement;
 import com.carle7.energytracker.model.MeterPoint;
 import com.carle7.energytracker.model.Usage;
 import com.carle7.energytracker.model.UnitRateByHalfHour;
+import com.carle7.energytracker.model.UtcToLocal;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -30,6 +31,9 @@ class UsageRepositoryGroupByRateAndRateTypeTest {
 
     @Autowired
     private UnitRateByHalfHourRepository unitRateByHalfHourRepository;
+
+    @Autowired
+    private UtcToLocalRepository utcToLocalRepository;
 
     @Test
     void byDay_sumsConsumptionSeparatelyPerRateTypeAndFiltersByIntervalBounds() {
@@ -120,5 +124,6 @@ class UsageRepositoryGroupByRateAndRateTypeTest {
     private void seedSlot(Long agreementId, String mpan, LocalDateTime slot, BigDecimal consumption, String rateType, BigDecimal valueIncVat) {
         unitRateByHalfHourRepository.save(new UnitRateByHalfHour(agreementId, valueIncVat, valueIncVat, slot, slot.plusMinutes(30), "DIRECT_DEBIT", rateType));
         usageRepository.save(new Usage(slot, slot.plusMinutes(30), consumption, mpan));
+        utcToLocalRepository.save(new UtcToLocal(slot, slot, "GMT"));
     }
 }
