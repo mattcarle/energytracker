@@ -32,6 +32,7 @@ export interface UsageDayAggregate {
   cost: number
   avgRate: number | null
   kwhOffPeak: number | null
+  costOffPeak: number | null
 }
 
 export interface UsageByDayResponse {

@@ -18,10 +18,11 @@ export interface MpanFigures {
   usageCost: number
   stdChg: number
   total: number
-  // Off-peak kWh, summed like kwh/usageCost rather than kept as a ratio - null-for-that-day
+  // Off-peak kWh/cost, summed like kwh/usageCost rather than kept as a ratio - null-for-that-day
   // (no peak/off-peak split applicable) contributes 0, the same as "none of this day was
   // off-peak", so aggregate percentages stay meaningful across a mix of split/non-split days.
   kwhOffPeak: number
+  costOffPeak: number
 }
 
 export interface DayRow {
@@ -30,7 +31,7 @@ export interface DayRow {
 }
 
 function emptyFigures(): MpanFigures {
-  return { kwh: 0, avgRate: null, usageCost: 0, stdChg: 0, total: 0, kwhOffPeak: 0 }
+  return { kwh: 0, avgRate: null, usageCost: 0, stdChg: 0, total: 0, kwhOffPeak: 0, costOffPeak: 0 }
 }
 
 function addFigures(a: MpanFigures, b: MpanFigures): MpanFigures {
@@ -38,6 +39,7 @@ function addFigures(a: MpanFigures, b: MpanFigures): MpanFigures {
   const usageCost = a.usageCost + b.usageCost
   const stdChg = a.stdChg + b.stdChg
   const kwhOffPeak = a.kwhOffPeak + b.kwhOffPeak
+  const costOffPeak = a.costOffPeak + b.costOffPeak
   return {
     kwh,
     usageCost,
@@ -45,6 +47,7 @@ function addFigures(a: MpanFigures, b: MpanFigures): MpanFigures {
     total: usageCost + stdChg,
     avgRate: kwh !== 0 ? usageCost / kwh : null,
     kwhOffPeak,
+    costOffPeak,
   }
 }
 
@@ -60,6 +63,7 @@ function averageFigures(f: MpanFigures, days: number): MpanFigures {
     stdChg: f.stdChg / days,
     total: f.total / days,
     kwhOffPeak: f.kwhOffPeak / days,
+    costOffPeak: f.costOffPeak / days,
   }
 }
 
@@ -211,6 +215,7 @@ export default function UsageByDay() {
               stdChg,
               total: usageCost + stdChg,
               kwhOffPeak: day.kwhOffPeak !== null ? day.kwhOffPeak * sign : 0,
+              costOffPeak: day.costOffPeak !== null ? day.costOffPeak * sign : 0,
             }
           }
 
@@ -219,7 +224,15 @@ export default function UsageByDay() {
           for (const [date, amount] of stdChgByDate) {
             const row = rowByDate.get(date)
             if (!row || row.byMpan[mpan]) continue
-            row.byMpan[mpan] = { kwh: 0, avgRate: null, usageCost: 0, stdChg: amount, total: amount, kwhOffPeak: 0 }
+            row.byMpan[mpan] = {
+              kwh: 0,
+              avgRate: null,
+              usageCost: 0,
+              stdChg: amount,
+              total: amount,
+              kwhOffPeak: 0,
+              costOffPeak: 0,
+            }
           }
 
           // Standing charges are typically known in advance for the whole agreement, but
@@ -469,7 +482,12 @@ export default function UsageByDay() {
               </div>
             )}
           </div>
-          <UsageBarChart rows={rows} meterPoints={includedMeterPoints} metric={chartMetric} />
+          <UsageBarChart
+            rows={rows}
+            meterPoints={includedMeterPoints}
+            metric={chartMetric}
+            offPeakAvailableByMpan={offPeakAvailableByMpan ?? undefined}
+          />
         </div>
       )}
 

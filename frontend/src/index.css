@@ -11,6 +11,11 @@
   --chart-mpan-1: #2f6fed;
   --chart-mpan-2: #e2793d;
   --chart-mpan-3: #2fa88f;
+  /* Off-peak segments use a lighter step of their MPAN's own hue rather than a new
+     categorical color - it's a magnitude split within one entity, not a new identity. */
+  --chart-mpan-1-offpeak: #8db0f5;
+  --chart-mpan-2-offpeak: #eba177;
+  --chart-mpan-3-offpeak: #69c0ae;
   --chart-stdchg: #c9a227;
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
@@ -48,6 +53,9 @@
     --chart-mpan-1: #5b9bff;
     --chart-mpan-2: #ff9d5c;
     --chart-mpan-3: #4fd6b8;
+    --chart-mpan-1-offpeak: #8cb9ff;
+    --chart-mpan-2-offpeak: #ffc6a0;
+    --chart-mpan-3-offpeak: #9ee8d8;
     --chart-stdchg: #f0c14b;
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;

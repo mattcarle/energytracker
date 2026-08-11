@@ -2,6 +2,7 @@ package com.carle7.energytracker.repository;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public interface UsageAggregateProjection {
 
@@ -29,6 +30,24 @@ public interface UsageAggregateProjection {
     // either be a genuine peak/off-peak split or just a single rate that changed mid-period;
     // we treat it as a split only when the cheaper rate is less than half the pricier one.
     default BigDecimal getKwhOffPeak() {
+        List<RateBreakdown> offPeakRows = offPeakRows();
+        if (offPeakRows == null) {
+            return null;
+        }
+        return offPeakRows.stream().map(RateBreakdown::getKwh).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    // Same off-peak/peak split as getKwhOffPeak(), but summing rate*kwh instead of just kwh -
+    // off-peak and peak rates differ, so this isn't just a proportional share of getCost().
+    default BigDecimal getCostOffPeak() {
+        List<RateBreakdown> offPeakRows = offPeakRows();
+        if (offPeakRows == null) {
+            return null;
+        }
+        return offPeakRows.stream().map(row -> row.getRate().multiply(row.getKwh())).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private List<RateBreakdown> offPeakRows() {
         List<RateBreakdown> breakdown = getBreakdown();
         if (breakdown == null || breakdown.size() < 2) {
             return null;
@@ -45,7 +64,6 @@ public interface UsageAggregateProjection {
                 .filter(row ->
                         !"DAY".equals(row.getRateType()) &&
                         ("NIGHT".equals(row.getRateType()) || row.getRate().multiply(TWO).compareTo(maxRate) < 0))
-                .map(RateBreakdown::getKwh)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .collect(Collectors.toList());
     }
 }
