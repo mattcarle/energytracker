@@ -37,6 +37,56 @@ interface UsagePeriodViewProps {
   latestPeriodKeyByMpan: Map<string, string | null> | null
   error: string | null
   noDataMessage: ReactNode
+  // Opt-in - only "Usage by day" asked for the Insights view, so every other usage-by-X page
+  // (which shares this component) keeps its previous chart/table-only behaviour.
+  enableInsights?: boolean
+}
+
+function StatTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="usage-page__stat-tile">
+      <div className="usage-page__stat-label">{label}</div>
+      <div className="usage-page__stat-value">{value}</div>
+    </div>
+  )
+}
+
+// formatCost puts the minus sign in front of the digits ("-28.42"), not the £ - move it in
+// front of the £ instead so a negative figure reads "-£28.42" rather than "£-28.42".
+function formatPoundValue(cost: number): string {
+  const formatted = formatCost(cost)
+  return formatted.startsWith('-') ? `-£${formatted.slice(1)}` : `£${formatted}`
+}
+
+function formatRatePence(kwh: number, cost: number): string {
+  const ratePence = kwh !== 0 ? (cost / kwh) * 100 : null
+  return ratePence !== null && Number.isFinite(ratePence)
+    ? `${ratePence.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}p`
+    : '–'
+}
+
+// Shows the calculation behind a figure rather than just the total, e.g.
+// "158.42 kWh @ 3.99p = £6.33" - rate is derived from cost/kWh (in pence) rather than read off
+// MpanFigures.avgRate, since that's kept in £ at 4dp for the table/chart, not p at 2dp.
+function formatKwhCostLine(kwh: number, cost: number): string {
+  return `${formatKwh(kwh)} kWh @ ${formatRatePence(kwh, cost)} = ${formatPoundValue(cost)}`
+}
+
+// Same idea as formatKwhCostLine but for a standing charge, which accrues per day rather than
+// per kWh, e.g. "31 days @ 45.00p = £13.80".
+function formatStdChargeLine(dayCount: number, stdChg: number): string {
+  const ratePence = dayCount > 0 ? (stdChg / dayCount) * 100 : null
+  const rateStr =
+    ratePence !== null && Number.isFinite(ratePence)
+      ? `${ratePence.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}p`
+      : '–'
+  return `${dayCount} day${dayCount === 1 ? '' : 's'} @ ${rateStr} = ${formatPoundValue(stdChg)}`
+}
+
+// Combined "kWh = cost" card, without a rate - used for the Total cards, where the rate (if
+// relevant) already has its own dedicated card.
+function formatKwhAndCostLine(kwh: number, cost: number): string {
+  return `${formatKwh(kwh)} kWh | ${formatPoundValue(cost)}`
 }
 
 // Shared table/chart rendering for every usage-by-X page - each page supplies its own period
@@ -54,10 +104,12 @@ export default function UsagePeriodView({
   latestPeriodKeyByMpan,
   error,
   noDataMessage,
+  enableInsights = false,
 }: UsagePeriodViewProps) {
   const [selectedMpans, setSelectedMpans] = useState<Set<string> | null>(null)
   const [showChart, setShowChart] = useState(true)
   const [showTable, setShowTable] = useState(true)
+  const [showInsights, setShowInsights] = useState(true)
   const [chartView, setChartView] = useState<ChartView>('usage')
 
   useEffect(() => {
@@ -114,14 +166,62 @@ export default function UsagePeriodView({
     return { kwh, total }
   }
 
+  // Groups the currently-selected MPANs (the same checkbox filter the chart/table use) into
+  // electricity import/export and gas, and sums each group's period totals - a section is
+  // simply omitted below when its group is empty, i.e. no MPAN of that kind is selected.
+  const insightsData = useMemo(() => {
+    if (!enableInsights) return null
+
+    function sumFigures(mpans: MeterPoint[]): MpanFigures {
+      return mpans.reduce((acc, mp) => addFigures(acc, totalsByMpan?.get(mp.mpan) ?? emptyFigures()), emptyFigures())
+    }
+
+    // Number of rows (days, for the only page this is enabled on) any of the group's MPANs was
+    // actually charged a standing charge on - the divisor for that group's blended daily rate.
+    function stdChgDayCount(mpans: MeterPoint[]): number {
+      if (!rows) return 0
+      return rows.filter((row) => mpans.some((mp) => (row.byMpan[mp.mpan]?.stdChg ?? 0) !== 0)).length
+    }
+
+    const importMpans = includedMeterPoints.filter((mp) => mp.meterType !== 'GAS' && !mp.isExport)
+    const exportMpans = includedMeterPoints.filter((mp) => mp.meterType !== 'GAS' && mp.isExport)
+    const gasMpans = includedMeterPoints.filter((mp) => mp.meterType === 'GAS')
+
+    const importFigures = sumFigures(importMpans)
+    // Export kwh/usageCost are stored sign-flipped negative (see useUsagePeriodData) so
+    // exported energy displays as negative kWh/cost, same as it nets against import in the
+    // chart/table TOTAL column - that's also what makes summing straight into netFigures below
+    // correct, rather than needing to subtract it.
+    const exportFigures = sumFigures(exportMpans)
+    const gasFigures = sumFigures(gasMpans)
+
+    return {
+      importMpans,
+      exportMpans,
+      gasMpans,
+      importFigures,
+      exportFigures,
+      gasFigures,
+      netFigures: addFigures(addFigures(importFigures, exportFigures), gasFigures),
+      importHasOffPeak: importMpans.some((mp) => offPeakAvailableByMpan?.get(mp.mpan) ?? false),
+      importStdChgDays: stdChgDayCount(importMpans),
+      exportStdChgDays: stdChgDayCount(exportMpans),
+      gasStdChgDays: stdChgDayCount(gasMpans),
+    }
+  }, [enableInsights, includedMeterPoints, totalsByMpan, offPeakAvailableByMpan, rows])
+
   // Refuses to turn a view off if it's the only one currently on, so the user can never end
-  // up with both chart and table hidden.
+  // up with every view hidden.
   function toggleChart() {
-    setShowChart((current) => (current && !showTable ? current : !current))
+    setShowChart((current) => (current && !showTable && !showInsights ? current : !current))
   }
 
   function toggleTable() {
-    setShowTable((current) => (current && !showChart ? current : !current))
+    setShowTable((current) => (current && !showChart && !showInsights ? current : !current))
+  }
+
+  function toggleInsights() {
+    setShowInsights((current) => (current && !showChart && !showTable ? current : !current))
   }
 
   function toggleMpan(mpan: string) {
@@ -143,11 +243,35 @@ export default function UsagePeriodView({
       <div className="usage-page__heading-row">
         <h1>{title}</h1>
         <div className="usage-page__view-toggles">
+          {enableInsights && (
+            <button
+              type="button"
+              className={showInsights ? 'active' : ''}
+              onClick={toggleInsights}
+              disabled={showInsights && !showChart && !showTable}
+              aria-pressed={showInsights}
+              aria-label="Show insights"
+              title="Show insights"
+            >
+              <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+                <path
+                  d="M10 1.7a5.4 5.4 0 0 0-3.25 9.7c.58.44.95 1.12.95 1.85v.55h4.6v-.55c0-.73.37-1.41.95-1.85A5.4 5.4 0 0 0 10 1.7Z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  strokeLinejoin="round"
+                />
+                <line x1="10" y1="5.3" x2="10" y2="8.6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                <line x1="7.7" y1="16.2" x2="12.3" y2="16.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                <line x1="8.3" y1="18" x2="11.7" y2="18" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              </svg>
+            </button>
+          )}
           <button
             type="button"
             className={showChart ? 'active' : ''}
             onClick={toggleChart}
-            disabled={showChart && !showTable}
+            disabled={showChart && !showTable && !showInsights}
             aria-pressed={showChart}
             aria-label="Show chart"
             title="Show chart"
@@ -162,7 +286,7 @@ export default function UsagePeriodView({
             type="button"
             className={showTable ? 'active' : ''}
             onClick={toggleTable}
-            disabled={showTable && !showChart}
+            disabled={showTable && !showChart && !showInsights}
             aria-pressed={showTable}
             aria-label="Show table"
             title="Show table"
@@ -197,6 +321,123 @@ export default function UsagePeriodView({
       {error && <p className="usage-page__error">{error}</p>}
       {!error && !rows && <p>Loading usage data…</p>}
       {!error && rows && !hasAnyUsage && <p>{noDataMessage}</p>}
+
+      {!error && rows && hasAnyUsage && enableInsights && showInsights && insightsData && (
+        <div className="usage-page__insights-section">
+          {(insightsData.importMpans.length > 0 || insightsData.exportMpans.length > 0) && (
+            <div className="usage-page__insights-category">
+              <h2 className="usage-page__insights-title">Electricity</h2>
+              {insightsData.importMpans.length > 0 && (
+                <div className="usage-page__insights-subsection">
+                  <h3 className="usage-page__insights-subheading">Import</h3>
+                  <div className="usage-page__stat-grid">
+                    <StatTile
+                      label="Off-peak Usage"
+                      value={
+                        insightsData.importHasOffPeak
+                          ? formatKwhCostLine(insightsData.importFigures.kwhOffPeak, insightsData.importFigures.costOffPeak)
+                          : '–'
+                      }
+                    />
+                    <StatTile
+                      label="Peak Usage"
+                      value={
+                        insightsData.importHasOffPeak
+                          ? formatKwhCostLine(
+                              insightsData.importFigures.kwh - insightsData.importFigures.kwhOffPeak,
+                              insightsData.importFigures.usageCost - insightsData.importFigures.costOffPeak,
+                            )
+                          : '–'
+                      }
+                    />
+                    {insightsData.importFigures.stdChg !== 0 && (
+                      <StatTile
+                        label="Standing charge"
+                        value={formatStdChargeLine(insightsData.importStdChgDays, insightsData.importFigures.stdChg)}
+                      />
+                    )}
+                    <StatTile
+                      label="Total"
+                      value={formatKwhAndCostLine(insightsData.importFigures.kwh, insightsData.importFigures.total)}
+                    />
+                    <StatTile
+                      label="Avg Import Rate"
+                      value={`${formatRatePence(insightsData.importFigures.kwh, insightsData.importFigures.usageCost)}/kWh`}
+                    />
+                    <StatTile
+                      label="Off-peak %"
+                      value={insightsData.importHasOffPeak ? formatPercent(offPeakPct(insightsData.importFigures)) : '–'}
+                    />
+                  </div>
+                </div>
+              )}
+              {insightsData.exportMpans.length > 0 && (
+                <div className="usage-page__insights-subsection">
+                  <h3 className="usage-page__insights-subheading">Export</h3>
+                  <div className="usage-page__stat-grid">
+                    <StatTile
+                      label="Usage"
+                      value={formatKwhCostLine(insightsData.exportFigures.kwh, insightsData.exportFigures.usageCost)}
+                    />
+                    {insightsData.exportFigures.stdChg !== 0 && (
+                      <StatTile
+                        label="Standing charge"
+                        value={formatStdChargeLine(insightsData.exportStdChgDays, insightsData.exportFigures.stdChg)}
+                      />
+                    )}
+                    <StatTile
+                      label="Total"
+                      value={formatKwhAndCostLine(insightsData.exportFigures.kwh, insightsData.exportFigures.total)}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {insightsData.gasMpans.length > 0 && (
+            <div className="usage-page__insights-category">
+              <h2 className="usage-page__insights-title">Gas</h2>
+              <div className="usage-page__stat-grid">
+                <StatTile
+                  label="Usage"
+                  value={formatKwhCostLine(insightsData.gasFigures.kwh, insightsData.gasFigures.usageCost)}
+                />
+                {insightsData.gasFigures.stdChg !== 0 && (
+                  <StatTile
+                    label="Standing charge"
+                    value={formatStdChargeLine(insightsData.gasStdChgDays, insightsData.gasFigures.stdChg)}
+                  />
+                )}
+                <StatTile
+                  label="Total"
+                  value={formatKwhAndCostLine(insightsData.gasFigures.kwh, insightsData.gasFigures.total)}
+                />
+              </div>
+            </div>
+          )}
+
+          {(insightsData.importMpans.length > 0 ||
+            insightsData.exportMpans.length > 0 ||
+            insightsData.gasMpans.length > 0) && (
+            <div className="usage-page__insights-category">
+              <h2 className="usage-page__insights-title">Net Total</h2>
+              <div className="usage-page__stat-grid">
+                <StatTile
+                  label="Total"
+                  value={formatKwhAndCostLine(insightsData.netFigures.kwh, insightsData.netFigures.total)}
+                />
+              </div>
+            </div>
+          )}
+
+          {insightsData.importMpans.length === 0 &&
+            insightsData.exportMpans.length === 0 &&
+            insightsData.gasMpans.length === 0 && (
+              <p className="usage-page__insights-empty">Select an MPAN above to see insights.</p>
+            )}
+        </div>
+      )}
 
       {!error && rows && hasAnyUsage && showChart && (
         <div className="usage-page__chart-section">

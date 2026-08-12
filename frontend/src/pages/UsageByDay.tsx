@@ -130,6 +130,7 @@ export default function UsageByDay() {
       latestPeriodKeyByMpan={latestPeriodKeyByMpan}
       error={meterPointsError ?? error}
       noDataMessage={`No usage data for ${MONTH_NAMES[month - 1]} ${year}.`}
+      enableInsights
     />
   )
 }
