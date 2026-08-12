@@ -89,6 +89,13 @@ function formatKwhAndCostLine(kwh: number, cost: number): string {
   return `${formatKwh(kwh)} kWh | ${formatPoundValue(cost)}`
 }
 
+// Same "kWh | cost" format as the Total card, but averaged over the days that Total is a sum
+// of - dayCount is 0 whenever there's no usage data yet to average over (e.g. nothing selected).
+function formatAveragePerDayLine(kwh: number, cost: number, dayCount: number): string {
+  if (dayCount <= 0) return '–'
+  return formatKwhAndCostLine(kwh / dayCount, cost / dayCount)
+}
+
 // Shared table/chart rendering for every usage-by-X page - each page supplies its own period
 // selector (via `controls`) and how a row's period key(s) are rendered/labelled (via
 // `periodColumns`), and this owns the MPAN filter, chart/table visibility toggles, chart metric
@@ -183,6 +190,20 @@ export default function UsagePeriodView({
       return rows.filter((row) => mpans.some((mp) => (row.byMpan[mp.mpan]?.stdChg ?? 0) !== 0)).length
     }
 
+    // Same cutoff as periodsWithData above, generalised to a group of MPANs: how many days (of
+    // this month-so-far) actually have usage data for any MPAN in the group - the divisor for
+    // "Average per Day".
+    function usageDayCount(mpans: MeterPoint[]): number {
+      if (!rows) return 0
+      let latestKey: string | null = null
+      for (const mp of mpans) {
+        const key = latestPeriodKeyByMpan?.get(mp.mpan) ?? null
+        if (key !== null && (latestKey === null || key > latestKey)) latestKey = key
+      }
+      if (latestKey === null) return 0
+      return rows.filter((row) => row.key <= latestKey).length
+    }
+
     const importMpans = includedMeterPoints.filter((mp) => mp.meterType !== 'GAS' && !mp.isExport)
     const exportMpans = includedMeterPoints.filter((mp) => mp.meterType !== 'GAS' && mp.isExport)
     const gasMpans = includedMeterPoints.filter((mp) => mp.meterType === 'GAS')
@@ -207,8 +228,12 @@ export default function UsagePeriodView({
       importStdChgDays: stdChgDayCount(importMpans),
       exportStdChgDays: stdChgDayCount(exportMpans),
       gasStdChgDays: stdChgDayCount(gasMpans),
+      importDayCount: usageDayCount(importMpans),
+      exportDayCount: usageDayCount(exportMpans),
+      gasDayCount: usageDayCount(gasMpans),
+      netDayCount: usageDayCount(includedMeterPoints),
     }
-  }, [enableInsights, includedMeterPoints, totalsByMpan, offPeakAvailableByMpan, rows])
+  }, [enableInsights, includedMeterPoints, totalsByMpan, offPeakAvailableByMpan, latestPeriodKeyByMpan, rows])
 
   // Refuses to turn a view off if it's the only one currently on, so the user can never end
   // up with every view hidden.
@@ -361,6 +386,14 @@ export default function UsagePeriodView({
                       value={formatKwhAndCostLine(insightsData.importFigures.kwh, insightsData.importFigures.total)}
                     />
                     <StatTile
+                      label="Average per Day"
+                      value={formatAveragePerDayLine(
+                        insightsData.importFigures.kwh,
+                        insightsData.importFigures.total,
+                        insightsData.importDayCount,
+                      )}
+                    />
+                    <StatTile
                       label="Avg Import Rate"
                       value={`${formatRatePence(insightsData.importFigures.kwh, insightsData.importFigures.usageCost)}/kWh`}
                     />
@@ -389,6 +422,14 @@ export default function UsagePeriodView({
                       label="Total"
                       value={formatKwhAndCostLine(insightsData.exportFigures.kwh, insightsData.exportFigures.total)}
                     />
+                    <StatTile
+                      label="Average per Day"
+                      value={formatAveragePerDayLine(
+                        insightsData.exportFigures.kwh,
+                        insightsData.exportFigures.total,
+                        insightsData.exportDayCount,
+                      )}
+                    />
                   </div>
                 </div>
               )}
@@ -413,6 +454,14 @@ export default function UsagePeriodView({
                   label="Total"
                   value={formatKwhAndCostLine(insightsData.gasFigures.kwh, insightsData.gasFigures.total)}
                 />
+                <StatTile
+                  label="Average per Day"
+                  value={formatAveragePerDayLine(
+                    insightsData.gasFigures.kwh,
+                    insightsData.gasFigures.total,
+                    insightsData.gasDayCount,
+                  )}
+                />
               </div>
             </div>
           )}
@@ -426,6 +475,14 @@ export default function UsagePeriodView({
                 <StatTile
                   label="Total"
                   value={formatKwhAndCostLine(insightsData.netFigures.kwh, insightsData.netFigures.total)}
+                />
+                <StatTile
+                  label="Average per Day"
+                  value={formatAveragePerDayLine(
+                    insightsData.netFigures.kwh,
+                    insightsData.netFigures.total,
+                    insightsData.netDayCount,
+                  )}
                 />
               </div>
             </div>
