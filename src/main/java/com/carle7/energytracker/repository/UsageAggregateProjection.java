@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public interface UsageAggregateProjection {
+    public static final BigDecimal MAX_EXPECTED_OFF_PEAK = BigDecimal.valueOf(15, 2);
 
     BigDecimal TWO = BigDecimal.valueOf(2);
     // Breakdown rows carry the raw pence-per-kWh rate (unit rate straight from Octopus), while
@@ -54,21 +55,16 @@ public interface UsageAggregateProjection {
 
     private List<RateBreakdown> offPeakRows() {
         List<RateBreakdown> breakdown = getBreakdown();
-        if (breakdown == null || breakdown.size() < 2) {
+        if (breakdown == null) {
             return null;
         }
 
-        BigDecimal minRate = breakdown.stream().map(RateBreakdown::getRate).min(BigDecimal::compareTo).orElse(null);
-        BigDecimal maxRate = breakdown.stream().map(RateBreakdown::getRate).max(BigDecimal::compareTo).orElse(null);
-        if (minRate.multiply(TWO).compareTo(maxRate) >= 0) {
-            return null;
-        }
-
-        // DAY rates always peak, NIGHT rates always off-peak, otherwise treat any rate that is less than half the maximum rate as off-peak
+        // DAY rates always peak, NIGHT rates always off-peak, otherwise treat any rate that is less than the maximum
+        // expected off-peak rate as off-peak
         return breakdown.stream()
                 .filter(row ->
-                        !"DAY".equals(row.getRateType()) &&
-                        ("NIGHT".equals(row.getRateType()) || row.getRate().multiply(TWO).compareTo(maxRate) < 0))
+                        !"DAY".equals(row.getRateType()) ||
+                        ("NIGHT".equals(row.getRateType()) || row.getRate().compareTo(MAX_EXPECTED_OFF_PEAK) < 0))
                 .collect(Collectors.toList());
     }
 }
