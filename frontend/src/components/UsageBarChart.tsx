@@ -10,7 +10,7 @@ import {
   YAxis,
 } from 'recharts'
 import type { MeterPoint } from '../api/types'
-import { formatDate, meterPointLabel, type DayRow } from '../pages/UsageByDay'
+import { meterPointLabel, type PeriodRow } from '../pages/usageShared'
 import './UsageBarChart.css'
 
 const MPAN_COLORS = ['var(--chart-mpan-1)', 'var(--chart-mpan-2)', 'var(--chart-mpan-3)']
@@ -23,7 +23,7 @@ const MPAN_OFFPEAK_COLORS = [
 export type ChartMetric = 'kwh' | 'cost'
 
 interface UsageBarChartProps {
-  rows: DayRow[]
+  rows: PeriodRow[]
   meterPoints: MeterPoint[]
   metric: ChartMetric
   // Which MPANs have a peak/off-peak split for the shown period - undefined/missing means no
@@ -62,7 +62,7 @@ function formatValue(value: number, metric: ChartMetric): string {
 
 export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvailableByMpan }: UsageBarChartProps) {
   const data = rows.map((row) => {
-    const point: Record<string, number | string> = { dayLabel: formatDate(row.date) }
+    const point: Record<string, number | string> = { dayLabel: row.label }
     for (const mp of meterPoints) {
       const figures = row.byMpan[mp.mpan]
       const hasSplit = offPeakAvailableByMpan?.get(mp.mpan) ?? false

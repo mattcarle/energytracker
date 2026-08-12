@@ -35,14 +35,88 @@ export interface UsageDayAggregate {
   costOffPeak: number | null
 }
 
+export interface UsageTotals {
+  intervalCount: number
+  kwh: number
+  cost: number
+  avgRate: number | null
+}
+
 export interface UsageByDayResponse {
   days: UsageDayAggregate[]
-  totals: {
-    intervalCount: number
-    kwh: number
-    cost: number
-    avgRate: number | null
-  }
+  totals: UsageTotals
+}
+
+export interface UsageHalfHourAggregate {
+  mpan: string
+  meterType: string
+  isExport: boolean
+  usageInterval: string
+  intervalCount: number
+  kwh: number
+  cost: number
+  avgRate: number | null
+  kwhOffPeak: number | null
+  costOffPeak: number | null
+}
+
+export interface UsageByHalfHourResponse {
+  halfHours: UsageHalfHourAggregate[]
+  totals: UsageTotals
+}
+
+export interface UsageWeekAggregate {
+  mpan: string
+  meterType: string
+  isExport: boolean
+  usageWeek: string
+  intervalCount: number
+  kwh: number
+  cost: number
+  avgRate: number | null
+  kwhOffPeak: number | null
+  costOffPeak: number | null
+}
+
+export interface UsageByWeekResponse {
+  weeks: UsageWeekAggregate[]
+  totals: UsageTotals
+}
+
+export interface UsageMonthAggregate {
+  mpan: string
+  meterType: string
+  isExport: boolean
+  usageMonth: string
+  intervalCount: number
+  kwh: number
+  cost: number
+  avgRate: number | null
+  kwhOffPeak: number | null
+  costOffPeak: number | null
+}
+
+export interface UsageByMonthResponse {
+  months: UsageMonthAggregate[]
+  totals: UsageTotals
+}
+
+export interface UsageYearAggregate {
+  mpan: string
+  meterType: string
+  isExport: boolean
+  usageYear: string
+  intervalCount: number
+  kwh: number
+  cost: number
+  avgRate: number | null
+  kwhOffPeak: number | null
+  costOffPeak: number | null
+}
+
+export interface UsageByYearResponse {
+  years: UsageYearAggregate[]
+  totals: UsageTotals
 }
 
 export interface StandingChargeByDayEntry {

@@ -9,13 +9,13 @@ import {
   YAxis,
 } from 'recharts'
 import type { MeterPoint } from '../api/types'
-import { formatDate, type DayRow } from '../pages/UsageByDay'
+import type { PeriodRow } from '../pages/usageShared'
 import './UsageBarChart.css'
 
 export type NetChartMetric = 'kwh' | 'cost'
 
 interface NetUsageBarChartProps {
-  rows: DayRow[]
+  rows: PeriodRow[]
   meterPoints: MeterPoint[]
   metric: NetChartMetric
 }
@@ -24,8 +24,8 @@ function formatValue(value: number, metric: NetChartMetric): string {
   return metric === 'kwh' ? `${value.toFixed(2)} kWh` : `£${value.toFixed(2)}`
 }
 
-// The net figure per day - kwh/total summed across the included MPANs, with export already
-// signed negative upstream in UsageByDay - the same value the table's TOTAL columns show.
+// The net figure per period - kwh/total summed across the included MPANs, with export already
+// signed negative upstream - the same value the table's TOTAL columns show.
 export default function NetUsageBarChart({ rows, meterPoints, metric }: NetUsageBarChartProps) {
   const data = rows.map((row) => {
     let value = 0
@@ -34,7 +34,7 @@ export default function NetUsageBarChart({ rows, meterPoints, metric }: NetUsage
       if (!figures) continue
       value += metric === 'kwh' ? figures.kwh : figures.total
     }
-    return { dayLabel: formatDate(row.date), value }
+    return { dayLabel: row.label, value }
   })
 
   // Thin out x-axis labels for a full month so they don't overlap; every day is still a

@@ -7,16 +7,32 @@ import ManageData from './pages/ManageData'
 import ManageUsers from './pages/ManageUsers'
 import Setup from './pages/Setup'
 import UsageByDay from './pages/UsageByDay'
+import UsageByHalfHour from './pages/UsageByHalfHour'
+import UsageByMonth from './pages/UsageByMonth'
+import UsageByWeek from './pages/UsageByWeek'
+import UsageByYear from './pages/UsageByYear'
 import './App.css'
 
-type Page = 'usage' | 'manage-data' | 'manage-users'
+type UsagePage = 'usage-half-hour' | 'usage-day' | 'usage-week' | 'usage-month' | 'usage-year'
+type AdminPage = 'manage-data' | 'manage-users'
+type Page = UsagePage | AdminPage
 type AuthPhase = 'loading' | 'setup' | 'login' | 'change-password' | 'authenticated'
+
+const USAGE_PAGES: { page: UsagePage; label: string }[] = [
+  { page: 'usage-half-hour', label: 'Usage by half-hour' },
+  { page: 'usage-day', label: 'Usage by day' },
+  { page: 'usage-week', label: 'Usage by week' },
+  { page: 'usage-month', label: 'Usage by month' },
+  { page: 'usage-year', label: 'Usage by year' },
+]
 
 function App() {
   const [phase, setPhase] = useState<AuthPhase>('loading')
   const [user, setUser] = useState<AuthUser | null>(null)
-  const [page, setPage] = useState<Page>('usage')
+  const [page, setPage] = useState<Page>('usage-day')
+  const [usageMenuOpen, setUsageMenuOpen] = useState(false)
   const [adminMenuOpen, setAdminMenuOpen] = useState(false)
+  const usageMenuRef = useRef<HTMLDivElement>(null)
   const adminMenuRef = useRef<HTMLDivElement>(null)
 
   const refreshAuth = useCallback(() => {
@@ -42,16 +58,22 @@ function App() {
   }, [refreshAuth])
 
   useEffect(() => {
-    if (!adminMenuOpen) return
+    if (!usageMenuOpen && !adminMenuOpen) return
 
     function handlePointerDown(event: MouseEvent) {
-      if (adminMenuRef.current && !adminMenuRef.current.contains(event.target as Node)) {
+      if (usageMenuOpen && usageMenuRef.current && !usageMenuRef.current.contains(event.target as Node)) {
+        setUsageMenuOpen(false)
+      }
+      if (adminMenuOpen && adminMenuRef.current && !adminMenuRef.current.contains(event.target as Node)) {
         setAdminMenuOpen(false)
       }
     }
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') setAdminMenuOpen(false)
+      if (event.key === 'Escape') {
+        setUsageMenuOpen(false)
+        setAdminMenuOpen(false)
+      }
     }
 
     document.addEventListener('mousedown', handlePointerDown)
@@ -60,7 +82,7 @@ function App() {
       document.removeEventListener('mousedown', handlePointerDown)
       document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [adminMenuOpen])
+  }, [usageMenuOpen, adminMenuOpen])
 
   function handleAuthenticated(authenticatedUser: AuthUser) {
     setUser(authenticatedUser)
@@ -75,12 +97,17 @@ function App() {
   function handleLogout() {
     logout().finally(() => {
       setUser(null)
-      setPage('usage')
+      setPage('usage-day')
       setPhase('login')
     })
   }
 
-  function selectAdminPage(target: 'manage-data' | 'manage-users') {
+  function selectUsagePage(target: UsagePage) {
+    setPage(target)
+    setUsageMenuOpen(false)
+  }
+
+  function selectAdminPage(target: AdminPage) {
     setPage(target)
     setAdminMenuOpen(false)
   }
@@ -105,6 +132,7 @@ function App() {
     return <ChangePassword username={user.username} onComplete={handlePasswordChanged} />
   }
 
+  const onUsagePage = USAGE_PAGES.some((p) => p.page === page)
   const onAdminPage = page === 'manage-data' || page === 'manage-users'
 
   return (
@@ -112,13 +140,30 @@ function App() {
       <nav className="app-nav">
         <span className="app-nav__title">Energy Tracker</span>
         <div className="app-nav__links">
-          <button
-            type="button"
-            className={page === 'usage' ? 'active' : ''}
-            onClick={() => setPage('usage')}
-          >
-            Usage
-          </button>
+          <div className="app-nav__dropdown" ref={usageMenuRef}>
+            <button
+              type="button"
+              className={onUsagePage ? 'active' : ''}
+              onClick={() => setUsageMenuOpen((open) => !open)}
+              aria-expanded={usageMenuOpen}
+            >
+              Usage ▾
+            </button>
+            {usageMenuOpen && (
+              <div className="app-nav__dropdown-panel">
+                {USAGE_PAGES.map(({ page: usagePage, label }) => (
+                  <button
+                    key={usagePage}
+                    type="button"
+                    className={page === usagePage ? 'active' : ''}
+                    onClick={() => selectUsagePage(usagePage)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           {user?.role === 'ADMIN' && (
             <div className="app-nav__dropdown" ref={adminMenuRef}>
               <button
@@ -154,8 +199,12 @@ function App() {
           </button>
         </div>
       </nav>
+      {page === 'usage-half-hour' && <UsageByHalfHour />}
+      {page === 'usage-day' && <UsageByDay />}
+      {page === 'usage-week' && <UsageByWeek />}
+      {page === 'usage-month' && <UsageByMonth />}
+      {page === 'usage-year' && <UsageByYear />}
       {page === 'manage-data' && user?.role === 'ADMIN' && <ManageData />}
-      {page === 'usage' && <UsageByDay />}
       {page === 'manage-users' && user?.role === 'ADMIN' && <ManageUsers currentUserId={user.id} />}
     </div>
   )

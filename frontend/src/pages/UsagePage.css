@@ -1,4 +1,4 @@
-.usage-by-day {
+.usage-page {
   width: 100%;
   max-width: 1600px;
   margin: 0 auto;
@@ -7,12 +7,12 @@
   text-align: left;
 }
 
-.usage-by-day h1 {
+.usage-page h1 {
   font-size: 26px;
   margin: 0;
 }
 
-.usage-by-day__heading-row {
+.usage-page__heading-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -20,12 +20,12 @@
   margin: 0 0 16px;
 }
 
-.usage-by-day__view-toggles {
+.usage-page__view-toggles {
   display: flex;
   gap: 8px;
 }
 
-.usage-by-day__view-toggles button {
+.usage-page__view-toggles button {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -39,26 +39,26 @@
   cursor: pointer;
 }
 
-.usage-by-day__view-toggles button:hover:not(:disabled) {
+.usage-page__view-toggles button:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--accent);
 }
 
-.usage-by-day__view-toggles button.active {
+.usage-page__view-toggles button.active {
   border-color: var(--accent-border);
   background: var(--accent-bg);
   color: var(--accent);
 }
 
-.usage-by-day__view-toggles button:disabled {
+.usage-page__view-toggles button:disabled {
   cursor: default;
 }
 
-.usage-by-day__chart-section {
+.usage-page__chart-section {
   margin-top: 8px;
 }
 
-.usage-by-day__chart-toolbar {
+.usage-page__chart-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -67,19 +67,19 @@
   margin-bottom: 8px;
 }
 
-.usage-by-day__metric-toggle {
+.usage-page__metric-toggle {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.usage-by-day__chart-total {
+.usage-page__chart-total {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-h);
 }
 
-.usage-by-day__metric-toggle button {
+.usage-page__metric-toggle button {
   font: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -91,23 +91,23 @@
   cursor: pointer;
 }
 
-.usage-by-day__metric-toggle button.active {
+.usage-page__metric-toggle button.active {
   border-color: var(--accent-border);
   background: var(--accent-bg);
   color: var(--accent);
 }
 
-.usage-by-day__error {
+.usage-page__error {
   color: #d64545;
 }
 
-.usage-by-day__controls {
+.usage-page__controls {
   display: flex;
   gap: 20px;
   margin: 24px 0;
 }
 
-.usage-by-day__controls label {
+.usage-page__controls label {
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -116,7 +116,8 @@
   color: var(--text);
 }
 
-.usage-by-day__controls select {
+.usage-page__controls select,
+.usage-page__controls input[type='date'] {
   font: inherit;
   font-size: 15px;
   padding: 8px 10px;
@@ -126,13 +127,13 @@
   color: var(--text-h);
 }
 
-.usage-by-day__month-nav {
+.usage-page__month-nav {
   display: flex;
   gap: 8px;
   margin-left: auto;
 }
 
-.usage-by-day__month-nav button {
+.usage-page__month-nav button {
   font: inherit;
   font-size: 15px;
   padding: 8px 14px;
@@ -143,19 +144,19 @@
   cursor: pointer;
 }
 
-.usage-by-day__month-nav button:hover {
+.usage-page__month-nav button:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
 
-.usage-by-day__mpan-toggles {
+.usage-page__mpan-toggles {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 24px;
   margin-bottom: 16px;
 }
 
-.usage-by-day__mpan-toggle {
+.usage-page__mpan-toggle {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -164,14 +165,14 @@
   cursor: pointer;
 }
 
-.usage-by-day__mpan-toggle input {
+.usage-page__mpan-toggle input {
   cursor: pointer;
 }
 
 /* Bounded height + vertical scroll keeps the header/footer and ~12 body rows on screen
    together on a laptop display; horizontal scroll is a fallback for narrow viewports, with
    column width/typeface trimmed below so two MPANs plus TOTAL fit without it by default. */
-.usage-by-day__table-wrap {
+.usage-page__table-wrap {
   overflow: auto;
   max-height: 380px;
   margin-top: 8px;
@@ -179,7 +180,7 @@
   border-radius: 8px;
 }
 
-.usage-by-day__table {
+.usage-page__table {
   width: max-content;
   min-width: 100%;
   /* separate (not collapse) - sticky thead/tfoot backgrounds don't reliably stay opaque over
@@ -196,76 +197,76 @@
   line-height: 1.3;
 }
 
-.usage-by-day__table th,
-.usage-by-day__table td {
+.usage-page__table th,
+.usage-page__table td {
   text-align: right;
   padding: 4px 5px;
   box-shadow: inset 0 -1px 0 var(--border);
 }
 
-.usage-by-day__table td {
+.usage-page__table td {
   white-space: nowrap;
 }
 
 /* Tighter than header/footer rows so more body rows fit in the scrollable area. */
-.usage-by-day__table tbody td {
+.usage-page__table tbody td {
   padding: 2px 5px;
 }
 
 /* Headers wrap onto multiple lines (explicit breaks between name and unit) so a long label
    doesn't force its column wider than the data actually needs. */
-.usage-by-day__table th {
+.usage-page__table th {
   white-space: normal;
   line-height: 1.25;
 }
 
-.usage-by-day__label-col {
+.usage-page__label-col {
   text-align: left;
   white-space: nowrap;
 }
 
 /* Extra type-selector weight beats the base th/td right-align rule above. */
-.usage-by-day__table th.usage-by-day__mpan-header {
+.usage-page__table th.usage-page__mpan-header {
   text-align: center;
 }
 
 /* Sits at the bottom of its rowSpan=2 cell so it lines up with the column-label row below it. */
-.usage-by-day__table thead th.usage-by-day__label-col {
+.usage-page__table thead th.usage-page__label-col {
   vertical-align: bottom;
 }
 
-.usage-by-day__table thead {
+.usage-page__table thead {
   position: sticky;
   top: 0;
   z-index: 2;
 }
 
-.usage-by-day__table thead th {
+.usage-page__table thead th {
   color: var(--text);
   font-weight: 600;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
 
-.usage-by-day__table thead tr:last-child th {
+.usage-page__table thead tr:last-child th {
   box-shadow: inset 0 -2px 0 var(--border);
 }
 
-.usage-by-day__table tfoot {
+.usage-page__table tfoot {
   position: sticky;
   bottom: 0;
   z-index: 2;
 }
 
-.usage-by-day__table tfoot td {
+.usage-page__table tfoot td {
   background: var(--bg);
 }
 
-.usage-by-day__group-start {
+.usage-page__group-start {
   border-left: 2px solid var(--border);
 }
 
-.usage-by-day__total-row td {
+.usage-page__total-row td {
   font-weight: 600;
   /* Combines this row's top separator with the base bottom line - box-shadow (unlike border
      shorthand per side) fully replaces the base rule's shadow rather than layering onto it. */
@@ -278,7 +279,7 @@
 }
 
 /* Same colour as the TOTAL row - they're both summary rows read as a pair. */
-.usage-by-day__average-row td {
+.usage-page__average-row td {
   font-weight: 600;
   color: var(--accent);
   /* Tighter than usual so it reads close to the TOTAL row above it. */
