@@ -218,6 +218,12 @@ export interface UsagePeriodData {
   rows: PeriodRow[] | null
   offPeakAvailableByMpan: Map<string, boolean> | null
   latestPeriodKeyByMpan: Map<string, string | null> | null
+  // Calendar dates ("YYYY-MM-DD") a standing charge actually accrued on, per MPAN - independent
+  // of the page's own row granularity, so a blended standing-charge rate can always be reported
+  // per calendar day (matching how the charge itself accrues) even on a week/month/year/half-hour
+  // page whose rows aren't one-per-day. Only dates that have "happened" (same cutoff as above) are
+  // included.
+  stdChgDaysByMpan: Map<string, Set<string>> | null
   error: string | null
 }
 
@@ -230,6 +236,7 @@ export function useUsagePeriodData(meterPoints: MeterPoint[] | null, config: Usa
   const [rows, setRows] = useState<PeriodRow[] | null>(null)
   const [offPeakAvailableByMpan, setOffPeakAvailableByMpan] = useState<Map<string, boolean> | null>(null)
   const [latestPeriodKeyByMpan, setLatestPeriodKeyByMpan] = useState<Map<string, string | null> | null>(null)
+  const [stdChgDaysByMpan, setStdChgDaysByMpan] = useState<Map<string, Set<string>> | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -264,6 +271,7 @@ export function useUsagePeriodData(meterPoints: MeterPoint[] | null, config: Usa
 
         const offPeakAvailable = new Map<string, boolean>()
         const latestKeyByMpan = new Map<string, string | null>()
+        const stdChgDays = new Map<string, Set<string>>()
 
         for (const { mpan, items, standingCharges } of perMpanResults) {
           const stdChgByKey = new Map<string, number>()
@@ -319,10 +327,24 @@ export function useUsagePeriodData(meterPoints: MeterPoint[] | null, config: Usa
             if (!f) continue
             row.byMpan[mpan] = { ...f, stdChg: 0, total: f.usageCost }
           }
+
+          // Same "happened yet" cutoff as above, but tracked by actual calendar date rather than
+          // by period key - a half-hour page's single day maps to 48 period keys via
+          // bucketKeyForStandingChargeDate, which would otherwise make its charge look like it
+          // spans 48 days instead of 1.
+          const chargedDays = new Set<string>()
+          for (const s of standingCharges) {
+            if (s.amount === 0) continue
+            const bucketKeys = config.bucketKeyForStandingChargeDate(s.chargeDate)
+            const hasHappened = latestKey !== null && bucketKeys.some((k) => k <= latestKey)
+            if (hasHappened) chargedDays.add(s.chargeDate)
+          }
+          stdChgDays.set(mpan, chargedDays)
         }
 
         setOffPeakAvailableByMpan(offPeakAvailable)
         setLatestPeriodKeyByMpan(latestKeyByMpan)
+        setStdChgDaysByMpan(stdChgDays)
         setRows(Array.from(rowByKey.values()).sort((a, b) => a.key.localeCompare(b.key)))
       })
       .catch((err: unknown) => {
@@ -335,5 +357,5 @@ export function useUsagePeriodData(meterPoints: MeterPoint[] | null, config: Usa
     }
   }, [meterPoints, config])
 
-  return { rows, offPeakAvailableByMpan, latestPeriodKeyByMpan, error }
+  return { rows, offPeakAvailableByMpan, latestPeriodKeyByMpan, stdChgDaysByMpan, error }
 }

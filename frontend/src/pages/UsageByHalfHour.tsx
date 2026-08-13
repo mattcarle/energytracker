@@ -68,7 +68,7 @@ export default function UsageByHalfHour() {
     [date],
   )
 
-  const { rows, offPeakAvailableByMpan, latestPeriodKeyByMpan, error } = useUsagePeriodData(meterPoints, config)
+  const { rows, offPeakAvailableByMpan, latestPeriodKeyByMpan, stdChgDaysByMpan, error } = useUsagePeriodData(meterPoints, config)
 
   useEffect(() => {
     if (dateChangedByUser) {
@@ -136,8 +136,11 @@ export default function UsageByHalfHour() {
       meterPoints={meterPoints}
       offPeakAvailableByMpan={offPeakAvailableByMpan}
       latestPeriodKeyByMpan={latestPeriodKeyByMpan}
+      stdChgDaysByMpan={stdChgDaysByMpan}
       error={meterPointsError ?? error}
       noDataMessage={`No usage data for ${date}.`}
+      enableInsights
+      insightsPeriodLabel="Half Hour"
     />
   )
 }

@@ -4,6 +4,8 @@ import com.carle7.energytracker.repository.RateBreakdown;
 import com.carle7.energytracker.repository.UsageAggregateProjection;
 import com.carle7.energytracker.repository.UsageByDayGroupByRateAndRateTypeProjection;
 import com.carle7.energytracker.repository.UsageByDayProjection;
+import com.carle7.energytracker.repository.UsageByHalfHourGroupByRateAndRateTypeProjection;
+import com.carle7.energytracker.repository.UsageByHalfHourProjection;
 import com.carle7.energytracker.repository.UsageByMonthGroupByRateAndRateTypeProjection;
 import com.carle7.energytracker.repository.UsageByMonthProjection;
 import com.carle7.energytracker.repository.UsageByYearGroupByRateAndRateTypeProjection;
@@ -56,6 +58,15 @@ class UsageControllerTest {
     private UsageByMonthGroupByRateAndRateTypeProjection monthBreakdownRowOf(LocalDate usageMonth, String rateType, String rate, String kwh) {
         UsageByMonthGroupByRateAndRateTypeProjection row = mock(UsageByMonthGroupByRateAndRateTypeProjection.class);
         when(row.getUsageMonth()).thenReturn(usageMonth);
+        when(row.getRateType()).thenReturn(rateType);
+        when(row.getRate()).thenReturn(new BigDecimal(rate));
+        when(row.getKwh()).thenReturn(new BigDecimal(kwh));
+        return row;
+    }
+
+    private UsageByHalfHourGroupByRateAndRateTypeProjection halfHourBreakdownRowOf(LocalDateTime usageInterval, String rateType, String rate, String kwh) {
+        UsageByHalfHourGroupByRateAndRateTypeProjection row = mock(UsageByHalfHourGroupByRateAndRateTypeProjection.class);
+        when(row.getUsageInterval()).thenReturn(usageInterval);
         when(row.getRateType()).thenReturn(rateType);
         when(row.getRate()).thenReturn(new BigDecimal(rate));
         when(row.getKwh()).thenReturn(new BigDecimal(kwh));
@@ -181,6 +192,70 @@ class UsageControllerTest {
                 eq("12345"),
                 eq(LocalDateTime.parse("2026-03-01T00:00:00")),
                 eq(LocalDateTime.parse("2026-03-15T00:00:00")));
+    }
+
+    @Test
+    void byHalfHour_offPeakIsDerivedFromWholeDayRateSpread_evenThoughEachIntervalHasOnlyOneRate() {
+        // Each half hour only ever has one rate active, so its own breakdown row alone can never
+        // satisfy the 2-rates-minimum off-peak/peak heuristic (see UsageAggregateProjection) -
+        // this exercises that the day's other half-hourly rate is used to fill that gap so a
+        // NIGHT-rated interval still reports itself as fully off-peak (and a DAY-rated interval
+        // as fully peak), rather than off-peak/peak staying permanently null for this granularity.
+        LocalDateTime nightSlot = LocalDateTime.parse("2026-07-05T02:00:00");
+        LocalDateTime daySlot = LocalDateTime.parse("2026-07-05T14:00:00");
+
+        UsageByHalfHourProjection nightRow = rowOf(UsageByHalfHourProjection.class, 1, "1.0000", "0.0700");
+        when(nightRow.getUsageInterval()).thenReturn(nightSlot);
+        UsageByHalfHourProjection dayRow = rowOf(UsageByHalfHourProjection.class, 1, "2.0000", "0.5000");
+        when(dayRow.getUsageInterval()).thenReturn(daySlot);
+        List<UsageByHalfHourProjection> halfHours = List.of(nightRow, dayRow);
+        when(usageRepository.findUsageByHalfHour(eq("12345"), any(), any(), anyList())).thenReturn(halfHours);
+
+        UsageByHalfHourGroupByRateAndRateTypeProjection nightBreakdown = halfHourBreakdownRowOf(nightSlot, "NIGHT", "0.07", "1.0000");
+        UsageByHalfHourGroupByRateAndRateTypeProjection dayBreakdown = halfHourBreakdownRowOf(daySlot, "DAY", "0.25", "2.0000");
+        when(usageRepository.findUsageByHalfHourGroupByRateAndRateType(eq("12345"), anyDateTime(), anyDateTime()))
+                .thenReturn(List.of(nightBreakdown, dayBreakdown));
+
+        UsageController.UsageByHalfHourResponse response = usageController.getUsageByHalfHour(
+                "12345", LocalDate.parse("2026-07-05"), LocalDate.parse("2026-07-06"), null);
+
+        assertThat(response.getHalfHours()).hasSize(2);
+
+        UsageByHalfHourProjection responseNight = response.getHalfHours().stream()
+                .filter(row -> row.getUsageInterval().equals(nightSlot)).findFirst().orElseThrow();
+        assertThat(responseNight.getKwhOffPeak()).isEqualByComparingTo("1.0000");
+        assertThat(responseNight.getCostOffPeak()).isEqualByComparingTo(
+                new BigDecimal("0.07").multiply(new BigDecimal("1.0000")).divide(new BigDecimal("100")));
+
+        UsageByHalfHourProjection responseDay = response.getHalfHours().stream()
+                .filter(row -> row.getUsageInterval().equals(daySlot)).findFirst().orElseThrow();
+        assertThat(responseDay.getKwhOffPeak()).isEqualByComparingTo("0");
+        assertThat(responseDay.getCostOffPeak()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void byHalfHour_singleRateAllDay_leavesOffPeakNull() {
+        // Only one distinct rate anywhere in the range - the padding has nothing to add, so this
+        // still correctly falls back to "no off-peak/peak split exists" rather than fabricating one.
+        LocalDateTime slot1 = LocalDateTime.parse("2026-07-05T02:00:00");
+        LocalDateTime slot2 = LocalDateTime.parse("2026-07-05T14:00:00");
+
+        UsageByHalfHourProjection row1 = rowOf(UsageByHalfHourProjection.class, 1, "1.0000", "0.2500");
+        when(row1.getUsageInterval()).thenReturn(slot1);
+        UsageByHalfHourProjection row2 = rowOf(UsageByHalfHourProjection.class, 1, "2.0000", "0.5000");
+        when(row2.getUsageInterval()).thenReturn(slot2);
+        List<UsageByHalfHourProjection> halfHours = List.of(row1, row2);
+        when(usageRepository.findUsageByHalfHour(eq("12345"), any(), any(), anyList())).thenReturn(halfHours);
+
+        UsageByHalfHourGroupByRateAndRateTypeProjection breakdown1 = halfHourBreakdownRowOf(slot1, "STANDARD", "0.25", "1.0000");
+        UsageByHalfHourGroupByRateAndRateTypeProjection breakdown2 = halfHourBreakdownRowOf(slot2, "STANDARD", "0.25", "2.0000");
+        when(usageRepository.findUsageByHalfHourGroupByRateAndRateType(eq("12345"), anyDateTime(), anyDateTime()))
+                .thenReturn(List.of(breakdown1, breakdown2));
+
+        UsageController.UsageByHalfHourResponse response = usageController.getUsageByHalfHour(
+                "12345", LocalDate.parse("2026-07-05"), LocalDate.parse("2026-07-06"), null);
+
+        assertThat(response.getHalfHours()).allMatch(row -> row.getKwhOffPeak() == null);
     }
 
     @Test

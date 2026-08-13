@@ -56,7 +56,7 @@ export default function UsageByMonth() {
     [year],
   )
 
-  const { rows, offPeakAvailableByMpan, latestPeriodKeyByMpan, error } = useUsagePeriodData(meterPoints, config)
+  const { rows, offPeakAvailableByMpan, latestPeriodKeyByMpan, stdChgDaysByMpan, error } = useUsagePeriodData(meterPoints, config)
 
   const controls = (
     <>
@@ -91,8 +91,11 @@ export default function UsageByMonth() {
       meterPoints={meterPoints}
       offPeakAvailableByMpan={offPeakAvailableByMpan}
       latestPeriodKeyByMpan={latestPeriodKeyByMpan}
+      stdChgDaysByMpan={stdChgDaysByMpan}
       error={meterPointsError ?? error}
       noDataMessage={`No usage data for ${year}.`}
+      enableInsights
+      insightsPeriodLabel="Month"
     />
   )
 }

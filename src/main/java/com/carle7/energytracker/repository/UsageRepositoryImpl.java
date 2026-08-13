@@ -51,17 +51,21 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
             ORDER BY %1$s
             """;
 
+    // Driven from unit_rate_by_half_hour (via utc_to_local) rather than usage, with usage
+    // LEFT JOINed in - so a half-hour with a rate but no recorded consumption (e.g. today's
+    // not-yet-synced intervals) still produces a row, with kwh coalesced to 0 instead of being
+    // dropped entirely as an INNER JOIN through usage would do.
     static final String BREAKDOWN_TEMPLATE = """
             SELECT mp.mpan AS mpan,
                    %1$s AS period,
                    r.rate_type AS rateType,
                    r.value_inc_vat AS rate,
-                   SUM(u.consumption) AS kwh
+                   COALESCE(SUM(u.consumption), 0) AS kwh
             FROM meter_point mp
                      JOIN agreement a ON mp.id = a.meter_point_id
-                     JOIN usage u ON mp.mpan = u.mpan
-                     JOIN utc_to_local z ON u.interval_from = z.local_time
-                     JOIN unit_rate_by_half_hour r ON r.valid_from = z.utc_time AND r.agreement_id = a.id
+                     JOIN unit_rate_by_half_hour r ON r.agreement_id = a.id
+                     JOIN utc_to_local z ON r.valid_from = z.utc_time
+                     LEFT JOIN usage u ON u.mpan = mp.mpan AND u.interval_from = z.local_time
             WHERE mp.mpan = :mpan
               AND z.local_time >= :intervalFrom
               AND z.local_time < :intervalTo

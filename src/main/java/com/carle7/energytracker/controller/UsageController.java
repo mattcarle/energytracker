@@ -24,6 +24,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -59,8 +60,26 @@ public class UsageController {
         Map<LocalDateTime, List<RateBreakdown>> breakdownByInterval = breakdownRows.stream()
                 .collect(Collectors.groupingBy(UsageByHalfHourGroupByRateAndRateTypeProjection::getUsageInterval, Collectors.mapping(UsageController::toRateBreakdown, Collectors.toList())));
 
+        // Off-peak/peak (see UsageAggregateProjection.getKwhOffPeak) only kicks in once a row's
+        // breakdown has 2+ distinct rates to compare - but only one rate is ever active within a
+        // single half hour, so every interval's own breakdown above is always exactly one row and
+        // never qualifies, leaving off-peak/peak permanently null at this granularity. Padding
+        // each interval's breakdown with every OTHER distinct rate seen elsewhere in the requested
+        // range (at 0 kWh) lets the same threshold check "see" the full rate spread while still
+        // only counting this interval's own real kWh - the 0 kWh padding entries can never
+        // contribute to the resulting off-peak/peak totals themselves.
+        List<RateBreakdown> distinctRatesInRange = breakdownRows.stream()
+                .collect(Collectors.toMap(
+                        row -> Map.entry(row.getRateType(), row.getRate()),
+                        UsageController::toRateBreakdown,
+                        (a, b) -> a))
+                .values().stream().toList();
+
         List<UsageByHalfHourProjection> halfHoursWithBreakdown = halfHours.stream()
-                .map(halfHour -> new HalfHourProjectionWithBreakdown(halfHour, breakdownByInterval.getOrDefault(halfHour.getUsageInterval(), List.of())))
+                .map(halfHour -> {
+                    List<RateBreakdown> ownBreakdown = breakdownByInterval.getOrDefault(halfHour.getUsageInterval(), List.of());
+                    return new HalfHourProjectionWithBreakdown(halfHour, withOtherRatesZeroed(ownBreakdown, distinctRatesInRange));
+                })
                 .collect(Collectors.toList());
 
         return new UsageByHalfHourResponse(halfHoursWithBreakdown, computeTotals(halfHours));
@@ -168,6 +187,21 @@ public class UsageController {
 
     private static RateBreakdown toRateBreakdown(UsageRateTypeProjection row) {
         return new RateBreakdown(row.getRateType(), row.getRate(), row.getKwh());
+    }
+
+    private static List<RateBreakdown> withOtherRatesZeroed(List<RateBreakdown> own, List<RateBreakdown> distinctRatesInRange) {
+        if (distinctRatesInRange.size() < 2) {
+            return own;
+        }
+        List<RateBreakdown> padded = new ArrayList<>(own);
+        for (RateBreakdown candidate : distinctRatesInRange) {
+            boolean alreadyPresent = own.stream().anyMatch(o ->
+                    o.getRateType().equals(candidate.getRateType()) && o.getRate().compareTo(candidate.getRate()) == 0);
+            if (!alreadyPresent) {
+                padded.add(new RateBreakdown(candidate.getRateType(), candidate.getRate(), BigDecimal.ZERO));
+            }
+        }
+        return padded;
     }
 
     private LocalDate effectiveFromDate(LocalDate fromDate) {

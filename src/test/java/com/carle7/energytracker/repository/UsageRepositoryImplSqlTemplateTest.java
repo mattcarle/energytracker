@@ -35,8 +35,9 @@ class UsageRepositoryImplSqlTemplateTest {
             assertThat(sql).contains(granularity.sqlExpression() + " AS period");
             assertThat(sql).contains("GROUP BY mp.mpan, " + granularity.sqlExpression() + ", r.rate_type, r.value_inc_vat");
             assertThat(sql).contains("ORDER BY " + granularity.sqlExpression());
-            assertThat(sql).contains("JOIN utc_to_local z ON u.interval_from = z.local_time");
-            assertThat(sql).contains("JOIN unit_rate_by_half_hour r ON r.valid_from = z.utc_time AND r.agreement_id = a.id");
+            assertThat(sql).contains("JOIN unit_rate_by_half_hour r ON r.agreement_id = a.id");
+            assertThat(sql).contains("JOIN utc_to_local z ON r.valid_from = z.utc_time");
+            assertThat(sql).contains("LEFT JOIN usage u ON u.mpan = mp.mpan AND u.interval_from = z.local_time");
             assertThat(sql).contains("AND z.local_time >= :intervalFrom");
             assertThat(sql).contains("AND z.local_time < :intervalTo");
             assertThat(sql).doesNotContain("payment_method");

@@ -68,6 +68,29 @@ class UsageRepositoryGroupByRateAndRateTypeTest {
     }
 
     @Test
+    void byHalfHour_includesRateRowsWithNoRecordedUsage() {
+        String mpan = "9334567890123";
+        MeterPoint meterPoint = meterPointRepository.save(new MeterPoint(mpan, false, "ELEC"));
+        Agreement agreement = agreementRepository.save(
+                new Agreement("E-2R-DAY-NIGHT-TEST-NOUSAGE", LocalDateTime.parse("2026-01-01T00:00:00"), null, meterPoint.getId()));
+
+        seedSlot(agreement.getId(), mpan, LocalDateTime.parse("2026-01-05T09:00:00"), BigDecimal.valueOf(2), "DAY", BigDecimal.valueOf(20));
+        // Rate/interval mapping exists (e.g. today's not-yet-synced interval) but no usage row.
+        seedRateOnly(agreement.getId(), LocalDateTime.parse("2026-01-05T23:00:00"), "NIGHT", BigDecimal.valueOf(10));
+
+        List<UsageByHalfHourGroupByRateAndRateTypeProjection> results = usageRepository.findUsageByHalfHourGroupByRateAndRateType(
+                mpan, LocalDateTime.parse("2026-01-05T00:00:00"), LocalDateTime.parse("2026-01-06T00:00:00"));
+
+        assertThat(results).hasSize(2);
+
+        UsageByHalfHourGroupByRateAndRateTypeProjection nightRow = results.stream()
+                .filter(r -> r.getUsageInterval().equals(LocalDateTime.parse("2026-01-05T23:00:00"))).findFirst().orElseThrow();
+        assertThat(nightRow.getRateType()).isEqualTo("NIGHT");
+        assertThat(nightRow.getRate()).isEqualByComparingTo("10");
+        assertThat(nightRow.getKwh()).isEqualByComparingTo("0");
+    }
+
+    @Test
     void byDay_sumsConsumptionSeparatelyPerRateTypeAndFiltersByIntervalBounds() {
         String mpan = "5234567890123";
         MeterPoint meterPoint = meterPointRepository.save(new MeterPoint(mpan, false, "ELEC"));
@@ -181,8 +204,12 @@ class UsageRepositoryGroupByRateAndRateTypeTest {
     }
 
     private void seedSlot(Long agreementId, String mpan, LocalDateTime slot, BigDecimal consumption, String rateType, BigDecimal valueIncVat) {
-        unitRateByHalfHourRepository.save(new UnitRateByHalfHour(agreementId, valueIncVat, valueIncVat, slot, slot.plusMinutes(30), "DIRECT_DEBIT", rateType));
+        seedRateOnly(agreementId, slot, rateType, valueIncVat);
         usageRepository.save(new Usage(slot, slot.plusMinutes(30), consumption, mpan));
+    }
+
+    private void seedRateOnly(Long agreementId, LocalDateTime slot, String rateType, BigDecimal valueIncVat) {
+        unitRateByHalfHourRepository.save(new UnitRateByHalfHour(agreementId, valueIncVat, valueIncVat, slot, slot.plusMinutes(30), "DIRECT_DEBIT", rateType));
         utcToLocalRepository.save(new UtcToLocal(slot, slot, "GMT"));
     }
 }

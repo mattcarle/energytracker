@@ -65,7 +65,7 @@ export default function UsageByDay() {
     }
   }, [year, month])
 
-  const { rows, offPeakAvailableByMpan, latestPeriodKeyByMpan, error } = useUsagePeriodData(meterPoints, config)
+  const { rows, offPeakAvailableByMpan, latestPeriodKeyByMpan, stdChgDaysByMpan, error } = useUsagePeriodData(meterPoints, config)
 
   function goToPreviousMonth() {
     if (month === 1) {
@@ -128,9 +128,11 @@ export default function UsageByDay() {
       meterPoints={meterPoints}
       offPeakAvailableByMpan={offPeakAvailableByMpan}
       latestPeriodKeyByMpan={latestPeriodKeyByMpan}
+      stdChgDaysByMpan={stdChgDaysByMpan}
       error={meterPointsError ?? error}
       noDataMessage={`No usage data for ${MONTH_NAMES[month - 1]} ${year}.`}
       enableInsights
+      insightsPeriodLabel="Day"
     />
   )
 }

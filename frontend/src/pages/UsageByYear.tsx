@@ -50,7 +50,7 @@ export default function UsageByYear() {
     [],
   )
 
-  const { rows, offPeakAvailableByMpan, latestPeriodKeyByMpan, error } = useUsagePeriodData(meterPoints, config)
+  const { rows, offPeakAvailableByMpan, latestPeriodKeyByMpan, stdChgDaysByMpan, error } = useUsagePeriodData(meterPoints, config)
 
   return (
     <UsagePeriodView
@@ -61,8 +61,11 @@ export default function UsageByYear() {
       meterPoints={meterPoints}
       offPeakAvailableByMpan={offPeakAvailableByMpan}
       latestPeriodKeyByMpan={latestPeriodKeyByMpan}
+      stdChgDaysByMpan={stdChgDaysByMpan}
       error={meterPointsError ?? error}
       noDataMessage="No usage data available."
+      enableInsights
+      insightsPeriodLabel="Year"
     />
   )
 }
