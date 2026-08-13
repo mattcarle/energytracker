@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { MeterPoint } from '../api/types'
 import NetUsageBarChart from '../components/NetUsageBarChart'
 import UsageBarChart from '../components/UsageBarChart'
+import { useIsMobile } from '../hooks/useIsMobile'
 import {
   CHART_VIEWS,
   addFigures,
@@ -120,11 +121,17 @@ export default function UsagePeriodView({
   enableInsights = false,
   insightsPeriodLabel = 'Day',
 }: UsagePeriodViewProps) {
+  const isMobile = useIsMobile()
   const [selectedMpans, setSelectedMpans] = useState<Set<string> | null>(null)
   const [showChart, setShowChart] = useState(true)
   const [showTable, setShowTable] = useState(true)
   const [showInsights, setShowInsights] = useState(true)
   const [chartView, setChartView] = useState<ChartView>('usage')
+
+  // The table isn't offered on mobile at all - deriving this rather than forcing showTable
+  // itself to false keeps the desktop toggle state intact if the viewport is later resized back
+  // up past the mobile breakpoint.
+  const tableVisible = !isMobile && showTable
 
   useEffect(() => {
     if (!meterPoints) return
@@ -256,9 +263,11 @@ export default function UsagePeriodView({
   ])
 
   // Refuses to turn a view off if it's the only one currently on, so the user can never end
-  // up with every view hidden.
+  // up with every view hidden. Chart/Insights check tableVisible (not showTable) so that on
+  // mobile - where the table is never shown at all - it can't be "held onto" as a phantom
+  // fallback that would leave the screen blank.
   function toggleChart() {
-    setShowChart((current) => (current && !showTable && !showInsights ? current : !current))
+    setShowChart((current) => (current && !tableVisible && !showInsights ? current : !current))
   }
 
   function toggleTable() {
@@ -266,7 +275,7 @@ export default function UsagePeriodView({
   }
 
   function toggleInsights() {
-    setShowInsights((current) => (current && !showChart && !showTable ? current : !current))
+    setShowInsights((current) => (current && !showChart && !tableVisible ? current : !current))
   }
 
   function toggleMpan(mpan: string) {
@@ -293,7 +302,7 @@ export default function UsagePeriodView({
               type="button"
               className={showInsights ? 'active' : ''}
               onClick={toggleInsights}
-              disabled={showInsights && !showChart && !showTable}
+              disabled={showInsights && !showChart && !tableVisible}
               aria-pressed={showInsights}
               aria-label="Show insights"
               title="Show insights"
@@ -316,7 +325,7 @@ export default function UsagePeriodView({
             type="button"
             className={showChart ? 'active' : ''}
             onClick={toggleChart}
-            disabled={showChart && !showTable && !showInsights}
+            disabled={showChart && !tableVisible && !showInsights}
             aria-pressed={showChart}
             aria-label="Show chart"
             title="Show chart"
@@ -327,22 +336,24 @@ export default function UsagePeriodView({
               <rect x="14" y="2" width="4" height="16" fill="currentColor" />
             </svg>
           </button>
-          <button
-            type="button"
-            className={showTable ? 'active' : ''}
-            onClick={toggleTable}
-            disabled={showTable && !showChart && !showInsights}
-            aria-pressed={showTable}
-            aria-label="Show table"
-            title="Show table"
-          >
-            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
-              <rect x="2" y="2" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" />
-              <line x1="2" y1="7.33" x2="18" y2="7.33" stroke="currentColor" strokeWidth="1.5" />
-              <line x1="2" y1="12.67" x2="18" y2="12.67" stroke="currentColor" strokeWidth="1.5" />
-              <line x1="8.67" y1="2" x2="8.67" y2="18" stroke="currentColor" strokeWidth="1.5" />
-            </svg>
-          </button>
+          {!isMobile && (
+            <button
+              type="button"
+              className={showTable ? 'active' : ''}
+              onClick={toggleTable}
+              disabled={showTable && !showChart && !showInsights}
+              aria-pressed={showTable}
+              aria-label="Show table"
+              title="Show table"
+            >
+              <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+                <rect x="2" y="2" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                <line x1="2" y1="7.33" x2="18" y2="7.33" stroke="currentColor" strokeWidth="1.5" />
+                <line x1="2" y1="12.67" x2="18" y2="12.67" stroke="currentColor" strokeWidth="1.5" />
+                <line x1="8.67" y1="2" x2="8.67" y2="18" stroke="currentColor" strokeWidth="1.5" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
 
@@ -554,7 +565,7 @@ export default function UsagePeriodView({
         </div>
       )}
 
-      {!error && rows && hasAnyUsage && showTable && (
+      {!error && rows && hasAnyUsage && tableVisible && (
         <div className="usage-page__table-wrap">
           <table className="usage-page__table">
             <thead>

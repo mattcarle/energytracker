@@ -199,8 +199,10 @@
 
 .usage-page__month-nav button {
   font: inherit;
-  font-size: 15px;
-  padding: 8px 14px;
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 600;
+  padding: 8px 16px;
   border-radius: 6px;
   border: 1px solid var(--border);
   background: var(--bg);
@@ -349,4 +351,32 @@
   /* Tighter than usual so it reads close to the TOTAL row above it. */
   padding-top: 2px;
   padding-bottom: 2px;
+}
+
+/* On mobile the table is never shown (see UsagePeriodView) and the page is Insights + Chart
+   only - these are the desktop layout's spacing/grid choices tightened for a phone-width single
+   column rather than a new layout, since the underlying sections are unchanged. */
+@media (max-width: 640px) {
+  .usage-page {
+    padding: 16px 12px 32px;
+  }
+
+  .usage-page__controls,
+  .usage-page__mpan-toggles {
+    gap: 8px 12px;
+  }
+
+  .usage-page__chart-toolbar {
+    gap: 8px;
+  }
+
+  .usage-page__month-nav {
+    margin-left: 0;
+  }
+
+  /* Desktop fits several tiles per row (auto-fit minmax(200px, 1fr)) - a phone width only ever
+     fits one, so skip straight to a single column instead of leaving fractional/cramped tiles. */
+  .usage-page__stat-grid {
+    grid-template-columns: 1fr;
+  }
 }

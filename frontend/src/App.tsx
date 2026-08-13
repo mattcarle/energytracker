@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getCurrentUser, getSetupStatus, logout } from './api/client'
 import type { AuthUser } from './api/types'
+import { useIsMobile } from './hooks/useIsMobile'
 import ChangePassword from './pages/ChangePassword'
 import Login from './pages/Login'
 import ManageData from './pages/ManageData'
@@ -18,12 +19,14 @@ type AdminPage = 'manage-data' | 'manage-users'
 type Page = UsagePage | AdminPage
 type AuthPhase = 'loading' | 'setup' | 'login' | 'change-password' | 'authenticated'
 
-const USAGE_PAGES: { page: UsagePage; label: string }[] = [
-  { page: 'usage-half-hour', label: 'Usage by half-hour' },
-  { page: 'usage-day', label: 'Usage by day' },
-  { page: 'usage-week', label: 'Usage by week' },
-  { page: 'usage-month', label: 'Usage by month' },
-  { page: 'usage-year', label: 'Usage by year' },
+// mobileLabel drops the "Usage by " prefix the dropdown label carries, since the mobile tab
+// row has five of these side by side and needs to stay scannable at phone widths.
+const USAGE_PAGES: { page: UsagePage; label: string; mobileLabel: string }[] = [
+  { page: 'usage-half-hour', label: 'Usage by half-hour', mobileLabel: 'Half-hour' },
+  { page: 'usage-day', label: 'Usage by day', mobileLabel: 'Day' },
+  { page: 'usage-week', label: 'Usage by week', mobileLabel: 'Week' },
+  { page: 'usage-month', label: 'Usage by month', mobileLabel: 'Month' },
+  { page: 'usage-year', label: 'Usage by year', mobileLabel: 'Year' },
 ]
 
 function App() {
@@ -34,6 +37,7 @@ function App() {
   const [adminMenuOpen, setAdminMenuOpen] = useState(false)
   const usageMenuRef = useRef<HTMLDivElement>(null)
   const adminMenuRef = useRef<HTMLDivElement>(null)
+  const isMobile = useIsMobile()
 
   const refreshAuth = useCallback(() => {
     setPhase('loading')
@@ -83,6 +87,14 @@ function App() {
       document.removeEventListener('keydown', handleKeyDown)
     }
   }, [usageMenuOpen, adminMenuOpen])
+
+  // The mobile nav has no Admin entry point at all, so a user (or window resized down) sitting
+  // on an admin page would otherwise be stranded with no way back - bounce to Usage by day.
+  useEffect(() => {
+    if (isMobile && (page === 'manage-data' || page === 'manage-users')) {
+      setPage('usage-day')
+    }
+  }, [isMobile, page])
 
   function handleAuthenticated(authenticatedUser: AuthUser) {
     setUser(authenticatedUser)
@@ -140,31 +152,33 @@ function App() {
       <nav className="app-nav">
         <span className="app-nav__title">Energy Tracker</span>
         <div className="app-nav__links">
-          <div className="app-nav__dropdown" ref={usageMenuRef}>
-            <button
-              type="button"
-              className={onUsagePage ? 'active' : ''}
-              onClick={() => setUsageMenuOpen((open) => !open)}
-              aria-expanded={usageMenuOpen}
-            >
-              Usage ▾
-            </button>
-            {usageMenuOpen && (
-              <div className="app-nav__dropdown-panel">
-                {USAGE_PAGES.map(({ page: usagePage, label }) => (
-                  <button
-                    key={usagePage}
-                    type="button"
-                    className={page === usagePage ? 'active' : ''}
-                    onClick={() => selectUsagePage(usagePage)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          {user?.role === 'ADMIN' && (
+          {!isMobile && (
+            <div className="app-nav__dropdown" ref={usageMenuRef}>
+              <button
+                type="button"
+                className={onUsagePage ? 'active' : ''}
+                onClick={() => setUsageMenuOpen((open) => !open)}
+                aria-expanded={usageMenuOpen}
+              >
+                Usage ▾
+              </button>
+              {usageMenuOpen && (
+                <div className="app-nav__dropdown-panel">
+                  {USAGE_PAGES.map(({ page: usagePage, label }) => (
+                    <button
+                      key={usagePage}
+                      type="button"
+                      className={page === usagePage ? 'active' : ''}
+                      onClick={() => selectUsagePage(usagePage)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {!isMobile && user?.role === 'ADMIN' && (
             <div className="app-nav__dropdown" ref={adminMenuRef}>
               <button
                 type="button"
@@ -199,6 +213,20 @@ function App() {
           </button>
         </div>
       </nav>
+      {isMobile && (
+        <div className="app-nav__mobile-tabs">
+          {USAGE_PAGES.map(({ page: usagePage, mobileLabel }) => (
+            <button
+              key={usagePage}
+              type="button"
+              className={page === usagePage ? 'active' : ''}
+              onClick={() => selectUsagePage(usagePage)}
+            >
+              {mobileLabel}
+            </button>
+          ))}
+        </div>
+      )}
       {page === 'usage-half-hour' && <UsageByHalfHour />}
       {page === 'usage-day' && <UsageByDay />}
       {page === 'usage-week' && <UsageByWeek />}

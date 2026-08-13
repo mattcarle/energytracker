@@ -68,3 +68,32 @@
   text-align: left;
   white-space: nowrap;
 }
+
+/* Replaces the "Usage ▾" dropdown on mobile - every Usage page gets its own always-visible tab
+   instead of being one click behind a menu. Scrolls horizontally as a fallback on the narrowest
+   phones rather than wrapping, so the row stays a single fixed-height strip under the title bar. */
+.app-nav__mobile-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 10px 16px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+}
+
+.app-nav__mobile-tabs button {
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.app-nav__mobile-tabs button.active {
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+}
