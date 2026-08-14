@@ -383,8 +383,14 @@ public class OctopusService {
                 usageRepository.deleteAllInBatch();
             }
 
+            // Re-fetch from the start of the latest day we have data for (local calendar day,
+            // not just the half-hour after the last interval), rather than resuming right after
+            // it - the most recent day's readings are often still incomplete (or later revised)
+            // when first loaded, so this re-pulls and overwrites the whole day rather than only
+            // ever appending to it. intervalFrom (not intervalTo) locates that day, since the
+            // last interval's intervalTo can itself already be local midnight of the next day.
             LocalDateTime periodFrom = usageRepository.findFirstByOrderByIntervalToDesc()
-                    .map(Usage::getIntervalTo)
+                    .map(usage -> londonMidnightUtc(londonDateOf(usage.getIntervalFrom())))
                     .or(() -> agreementRepository.findFirstByOrderByValidFromAsc().map(Agreement::getValidFrom))
                     .orElse(null);
 
@@ -400,6 +406,10 @@ public class OctopusService {
 
             int usageCount = 0;
             for (MeterPoint meterPoint : meterPointRepository.findAll()) {
+                // Clears out whatever's on record for the window being re-fetched, so the
+                // replacement data below can't end up duplicating it.
+                usageRepository.deleteByMpanAndIntervalFromGreaterThanEqual(meterPoint.getMpan(), periodFrom);
+
                 for (Meter meter : meterRepository.findByMeterPointId(meterPoint.getId())) {
                     ConsumptionResponse response = octopusApiService.fetchConsumptionData(
                             meterPoint.getMeterType(), meterPoint.getMpan(), meter.getSerialNumber(), periodFrom, periodTo);

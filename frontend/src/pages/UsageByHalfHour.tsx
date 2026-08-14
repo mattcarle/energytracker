@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getUsageByHalfHour } from '../api/client'
 import UsagePeriodView, { type PeriodColumn } from './UsagePeriodView'
-import { addDays, pad2, useMeterPoints, useUsagePeriodData, type RawPeriodItem, type UsagePeriodConfig } from './usageShared'
+import {
+  addDays,
+  formatFullDate,
+  pad2,
+  useMeterPoints,
+  useUsagePeriodData,
+  type RawPeriodItem,
+  type UsagePeriodConfig,
+} from './usageShared'
 
 function halfHourKeys(): string[] {
   const keys: string[] = []
@@ -117,10 +125,10 @@ export default function UsageByHalfHour() {
       </label>
       <div className="usage-page__month-nav">
         <button type="button" onClick={goToPreviousDay} aria-label="Previous day">
-          &larr;
+          &lt;
         </button>
         <button type="button" onClick={goToNextDay} aria-label="Next day">
-          &rarr;
+          &gt;
         </button>
       </div>
     </>
@@ -141,6 +149,7 @@ export default function UsageByHalfHour() {
       noDataMessage={`No usage data for ${date}.`}
       enableInsights
       insightsPeriodLabel="Half Hour"
+      periodSummaryLabel={formatFullDate(date)}
     />
   )
 }

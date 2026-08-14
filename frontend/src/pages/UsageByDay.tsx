@@ -3,6 +3,7 @@ import { getUsageByDay } from '../api/client'
 import UsagePeriodView, { type PeriodColumn } from './UsagePeriodView'
 import {
   MONTH_NAMES,
+  MONTH_NAMES_SHORT,
   dayOfWeek,
   pad2,
   useMeterPoints,
@@ -90,7 +91,7 @@ export default function UsageByDay() {
       <label>
         Month
         <select value={month} onChange={(e) => setMonth(Number(e.target.value))}>
-          {MONTH_NAMES.map((name, index) => (
+          {MONTH_NAMES_SHORT.map((name, index) => (
             <option key={name} value={index + 1}>
               {name}
             </option>
@@ -109,10 +110,10 @@ export default function UsageByDay() {
       </label>
       <div className="usage-page__month-nav">
         <button type="button" onClick={goToPreviousMonth} aria-label="Previous month">
-          &larr;
+          &lt;
         </button>
         <button type="button" onClick={goToNextMonth} aria-label="Next month">
-          &rarr;
+          &gt;
         </button>
       </div>
     </>
@@ -133,6 +134,7 @@ export default function UsageByDay() {
       noDataMessage={`No usage data for ${MONTH_NAMES[month - 1]} ${year}.`}
       enableInsights
       insightsPeriodLabel="Day"
+      periodSummaryLabel={`${MONTH_NAMES_SHORT[month - 1]} ${year}`}
     />
   )
 }

@@ -114,18 +114,22 @@ class OctopusServiceDeleteAllTest {
     }
 
     @Test
-    void loadUsageData_deleteAllFalse_resumesFromLastSavedRecord_andSkipsDeletion() {
+    void loadUsageData_deleteAllFalse_reloadsFromStartOfLatestDay_andSkipsFullDeletion() {
+        // Latest saved interval is mid-afternoon, not midnight, so this also confirms the reload
+        // point is the start of that interval's calendar day rather than the interval itself.
         com.carle7.energytracker.model.Usage priorUsage = new com.carle7.energytracker.model.Usage(
-                LocalDateTime.parse("2026-01-01T00:00:00"), LocalDateTime.parse("2026-01-01T00:30:00"),
+                LocalDateTime.parse("2026-01-01T13:00:00"), LocalDateTime.parse("2026-01-01T13:30:00"),
                 java.math.BigDecimal.ONE, "MPAN1");
         MeterPoint meterPoint = new MeterPoint("MPAN1", false, "ELEC");
         meterPoint.setId(1L);
         Meter meter = new Meter("SERIAL1", 1L);
 
+        LocalDateTime startOfLatestDay = LocalDateTime.parse("2026-01-01T00:00:00");
+
         when(usageRepository.findFirstByOrderByIntervalToDesc()).thenReturn(Optional.of(priorUsage));
         when(meterPointRepository.findAll()).thenReturn(List.of(meterPoint));
         when(meterRepository.findByMeterPointId(1L)).thenReturn(List.of(meter));
-        when(octopusApiService.fetchConsumptionData(eq("ELEC"), eq("MPAN1"), eq("SERIAL1"), eq(priorUsage.getIntervalTo()), any()))
+        when(octopusApiService.fetchConsumptionData(eq("ELEC"), eq("MPAN1"), eq("SERIAL1"), eq(startOfLatestDay), any()))
                 .thenReturn(new OctopusApiService.ConsumptionResponse());
         when(unitRateByHalfHourRepository.findFirstByOrderByValidFromAsc()).thenReturn(Optional.empty());
         when(unitRateByHalfHourRepository.findFirstByOrderByValidFromDesc()).thenReturn(Optional.empty());
@@ -133,6 +137,7 @@ class OctopusServiceDeleteAllTest {
         octopusService.loadUsageData(false);
 
         verify(usageRepository, never()).deleteAllInBatch();
-        verify(octopusApiService).fetchConsumptionData(eq("ELEC"), eq("MPAN1"), eq("SERIAL1"), eq(priorUsage.getIntervalTo()), any());
+        verify(usageRepository).deleteByMpanAndIntervalFromGreaterThanEqual("MPAN1", startOfLatestDay);
+        verify(octopusApiService).fetchConsumptionData(eq("ELEC"), eq("MPAN1"), eq("SERIAL1"), eq(startOfLatestDay), any());
     }
 }

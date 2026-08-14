@@ -45,6 +45,10 @@ interface UsagePeriodViewProps {
   // day, "Week" for Usage by week, and so on. Only meaningful (and required in practice) when
   // enableInsights is set.
   insightsPeriodLabel?: string
+  // The Insights section's "Summary for X" heading - e.g. "Aug 2026" for Usage by day, "2026"
+  // for Usage by week/month. Left undefined where there's no single period to name (Usage by
+  // year spans every year with data), in which case the heading just reads "Summary".
+  periodSummaryLabel?: string
 }
 
 function StatTile({ label, value }: { label: string; value: string }) {
@@ -120,6 +124,7 @@ export default function UsagePeriodView({
   noDataMessage,
   enableInsights = false,
   insightsPeriodLabel = 'Day',
+  periodSummaryLabel,
 }: UsagePeriodViewProps) {
   const isMobile = useIsMobile()
   const [selectedMpans, setSelectedMpans] = useState<Set<string> | null>(null)
@@ -297,6 +302,21 @@ export default function UsagePeriodView({
       <div className="usage-page__heading-row">
         <h1>{title}</h1>
         <div className="usage-page__view-toggles">
+          <button
+            type="button"
+            className={showChart ? 'active' : ''}
+            onClick={toggleChart}
+            disabled={showChart && !tableVisible && !showInsights}
+            aria-pressed={showChart}
+            aria-label="Show chart"
+            title="Show chart"
+          >
+            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+              <rect x="2" y="10" width="4" height="8" fill="currentColor" />
+              <rect x="8" y="5" width="4" height="13" fill="currentColor" />
+              <rect x="14" y="2" width="4" height="16" fill="currentColor" />
+            </svg>
+          </button>
           {enableInsights && (
             <button
               type="button"
@@ -321,21 +341,6 @@ export default function UsagePeriodView({
               </svg>
             </button>
           )}
-          <button
-            type="button"
-            className={showChart ? 'active' : ''}
-            onClick={toggleChart}
-            disabled={showChart && !tableVisible && !showInsights}
-            aria-pressed={showChart}
-            aria-label="Show chart"
-            title="Show chart"
-          >
-            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
-              <rect x="2" y="10" width="4" height="8" fill="currentColor" />
-              <rect x="8" y="5" width="4" height="13" fill="currentColor" />
-              <rect x="14" y="2" width="4" height="16" fill="currentColor" />
-            </svg>
-          </button>
           {!isMobile && (
             <button
               type="button"
@@ -366,7 +371,7 @@ export default function UsagePeriodView({
                 checked={selectedMpans?.has(mp.mpan) ?? true}
                 onChange={() => toggleMpan(mp.mpan)}
               />
-              MPAN {mp.mpan} &ndash; {meterPointLabel(mp)}
+              {meterPointLabel(mp)}
             </label>
           ))}
         </div>
@@ -377,155 +382,6 @@ export default function UsagePeriodView({
       {error && <p className="usage-page__error">{error}</p>}
       {!error && !rows && <p>Loading usage data…</p>}
       {!error && rows && !hasAnyUsage && <p>{noDataMessage}</p>}
-
-      {!error && rows && hasAnyUsage && enableInsights && showInsights && insightsData && (
-        <div className="usage-page__insights-section">
-          {(insightsData.importMpans.length > 0 || insightsData.exportMpans.length > 0) && (
-            <div className="usage-page__insights-category">
-              <h2 className="usage-page__insights-title">Electricity</h2>
-              {insightsData.importMpans.length > 0 && (
-                <div className="usage-page__insights-subsection">
-                  <h3 className="usage-page__insights-subheading">Import</h3>
-                  <div className="usage-page__stat-grid">
-                    <StatTile
-                      label="Off-peak Usage"
-                      value={
-                        insightsData.importHasOffPeak
-                          ? formatKwhCostLine(insightsData.importFigures.kwhOffPeak, insightsData.importFigures.costOffPeak)
-                          : '–'
-                      }
-                    />
-                    <StatTile
-                      label="Peak Usage"
-                      value={
-                        insightsData.importHasOffPeak
-                          ? formatKwhCostLine(
-                              insightsData.importFigures.kwh - insightsData.importFigures.kwhOffPeak,
-                              insightsData.importFigures.usageCost - insightsData.importFigures.costOffPeak,
-                            )
-                          : '–'
-                      }
-                    />
-                    {insightsData.importFigures.stdChg !== 0 && (
-                      <StatTile
-                        label="Standing charge"
-                        value={formatStdChargeLine(insightsData.importStdChgDays, insightsData.importFigures.stdChg)}
-                      />
-                    )}
-                    <StatTile
-                      label="Total"
-                      value={formatKwhAndCostLine(insightsData.importFigures.kwh, insightsData.importFigures.total)}
-                    />
-                    <StatTile
-                      label={`Average per ${insightsPeriodLabel}`}
-                      value={formatAveragePerPeriodLine(
-                        insightsData.importFigures.kwh,
-                        insightsData.importFigures.total,
-                        insightsData.importPeriodCount,
-                      )}
-                    />
-                    <StatTile
-                      label="Avg Import Rate"
-                      value={`${formatRatePence(insightsData.importFigures.kwh, insightsData.importFigures.usageCost)}/kWh`}
-                    />
-                    <StatTile
-                      label="Off-peak %"
-                      value={insightsData.importHasOffPeak ? formatPercent(offPeakPct(insightsData.importFigures)) : '–'}
-                    />
-                  </div>
-                </div>
-              )}
-              {insightsData.exportMpans.length > 0 && (
-                <div className="usage-page__insights-subsection">
-                  <h3 className="usage-page__insights-subheading">Export</h3>
-                  <div className="usage-page__stat-grid">
-                    <StatTile
-                      label="Usage"
-                      value={formatKwhCostLine(insightsData.exportFigures.kwh, insightsData.exportFigures.usageCost)}
-                    />
-                    {insightsData.exportFigures.stdChg !== 0 && (
-                      <StatTile
-                        label="Standing charge"
-                        value={formatStdChargeLine(insightsData.exportStdChgDays, insightsData.exportFigures.stdChg)}
-                      />
-                    )}
-                    <StatTile
-                      label="Total"
-                      value={formatKwhAndCostLine(insightsData.exportFigures.kwh, insightsData.exportFigures.total)}
-                    />
-                    <StatTile
-                      label={`Average per ${insightsPeriodLabel}`}
-                      value={formatAveragePerPeriodLine(
-                        insightsData.exportFigures.kwh,
-                        insightsData.exportFigures.total,
-                        insightsData.exportPeriodCount,
-                      )}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {insightsData.gasMpans.length > 0 && (
-            <div className="usage-page__insights-category">
-              <h2 className="usage-page__insights-title">Gas</h2>
-              <div className="usage-page__stat-grid">
-                <StatTile
-                  label="Usage"
-                  value={formatKwhCostLine(insightsData.gasFigures.kwh, insightsData.gasFigures.usageCost)}
-                />
-                {insightsData.gasFigures.stdChg !== 0 && (
-                  <StatTile
-                    label="Standing charge"
-                    value={formatStdChargeLine(insightsData.gasStdChgDays, insightsData.gasFigures.stdChg)}
-                  />
-                )}
-                <StatTile
-                  label="Total"
-                  value={formatKwhAndCostLine(insightsData.gasFigures.kwh, insightsData.gasFigures.total)}
-                />
-                <StatTile
-                  label={`Average per ${insightsPeriodLabel}`}
-                  value={formatAveragePerPeriodLine(
-                    insightsData.gasFigures.kwh,
-                    insightsData.gasFigures.total,
-                    insightsData.gasPeriodCount,
-                  )}
-                />
-              </div>
-            </div>
-          )}
-
-          {(insightsData.importMpans.length > 0 ||
-            insightsData.exportMpans.length > 0 ||
-            insightsData.gasMpans.length > 0) && (
-            <div className="usage-page__insights-category">
-              <h2 className="usage-page__insights-title">Net Total</h2>
-              <div className="usage-page__stat-grid">
-                <StatTile
-                  label="Total"
-                  value={formatKwhAndCostLine(insightsData.netFigures.kwh, insightsData.netFigures.total)}
-                />
-                <StatTile
-                  label={`Average per ${insightsPeriodLabel}`}
-                  value={formatAveragePerPeriodLine(
-                    insightsData.netFigures.kwh,
-                    insightsData.netFigures.total,
-                    insightsData.netPeriodCount,
-                  )}
-                />
-              </div>
-            </div>
-          )}
-
-          {insightsData.importMpans.length === 0 &&
-            insightsData.exportMpans.length === 0 &&
-            insightsData.gasMpans.length === 0 && (
-              <p className="usage-page__insights-empty">Select an MPAN above to see insights.</p>
-            )}
-        </div>
-      )}
 
       {!error && rows && hasAnyUsage && showChart && (
         <div className="usage-page__chart-section">
@@ -562,6 +418,155 @@ export default function UsagePeriodView({
               offPeakAvailableByMpan={offPeakAvailableByMpan ?? undefined}
             />
           )}
+        </div>
+      )}
+
+      {!error && rows && hasAnyUsage && enableInsights && showInsights && insightsData && (
+        <div className="usage-page__insights-section">
+          <h2 className="usage-page__insights-title">
+            Summary{periodSummaryLabel ? ` for ${periodSummaryLabel}` : ''}
+          </h2>
+
+          {insightsData.importMpans.length > 0 && (
+            <div className="usage-page__insights-category">
+              <h3 className="usage-page__insights-subheading">Elec (Import)</h3>
+              <div className="usage-page__stat-grid">
+                <StatTile
+                  label="Off-peak Usage"
+                  value={
+                    insightsData.importHasOffPeak
+                      ? formatKwhCostLine(insightsData.importFigures.kwhOffPeak, insightsData.importFigures.costOffPeak)
+                      : '–'
+                  }
+                />
+                <StatTile
+                  label="Peak Usage"
+                  value={
+                    insightsData.importHasOffPeak
+                      ? formatKwhCostLine(
+                          insightsData.importFigures.kwh - insightsData.importFigures.kwhOffPeak,
+                          insightsData.importFigures.usageCost - insightsData.importFigures.costOffPeak,
+                        )
+                      : '–'
+                  }
+                />
+                {insightsData.importFigures.stdChg !== 0 && (
+                  <StatTile
+                    label="Standing charge"
+                    value={formatStdChargeLine(insightsData.importStdChgDays, insightsData.importFigures.stdChg)}
+                  />
+                )}
+                <StatTile
+                  label="Total"
+                  value={formatKwhAndCostLine(insightsData.importFigures.kwh, insightsData.importFigures.total)}
+                />
+                <StatTile
+                  label={`Average per ${insightsPeriodLabel}`}
+                  value={formatAveragePerPeriodLine(
+                    insightsData.importFigures.kwh,
+                    insightsData.importFigures.total,
+                    insightsData.importPeriodCount,
+                  )}
+                />
+                <StatTile
+                  label="Avg Import Rate"
+                  value={`${formatRatePence(insightsData.importFigures.kwh, insightsData.importFigures.usageCost)}/kWh`}
+                />
+                <StatTile
+                  label="Off-peak %"
+                  value={insightsData.importHasOffPeak ? formatPercent(offPeakPct(insightsData.importFigures)) : '–'}
+                />
+              </div>
+            </div>
+          )}
+
+          {insightsData.exportMpans.length > 0 && (
+            <div className="usage-page__insights-category">
+              <h3 className="usage-page__insights-subheading">Elec (Export)</h3>
+              <div className="usage-page__stat-grid">
+                <StatTile
+                  label="Usage"
+                  value={formatKwhCostLine(insightsData.exportFigures.kwh, insightsData.exportFigures.usageCost)}
+                />
+                {insightsData.exportFigures.stdChg !== 0 && (
+                  <StatTile
+                    label="Standing charge"
+                    value={formatStdChargeLine(insightsData.exportStdChgDays, insightsData.exportFigures.stdChg)}
+                  />
+                )}
+                <StatTile
+                  label="Total"
+                  value={formatKwhAndCostLine(insightsData.exportFigures.kwh, insightsData.exportFigures.total)}
+                />
+                <StatTile
+                  label={`Average per ${insightsPeriodLabel}`}
+                  value={formatAveragePerPeriodLine(
+                    insightsData.exportFigures.kwh,
+                    insightsData.exportFigures.total,
+                    insightsData.exportPeriodCount,
+                  )}
+                />
+              </div>
+            </div>
+          )}
+
+          {insightsData.gasMpans.length > 0 && (
+            <div className="usage-page__insights-category">
+              <h3 className="usage-page__insights-subheading">Gas</h3>
+              <div className="usage-page__stat-grid">
+                <StatTile
+                  label="Usage"
+                  value={formatKwhCostLine(insightsData.gasFigures.kwh, insightsData.gasFigures.usageCost)}
+                />
+                {insightsData.gasFigures.stdChg !== 0 && (
+                  <StatTile
+                    label="Standing charge"
+                    value={formatStdChargeLine(insightsData.gasStdChgDays, insightsData.gasFigures.stdChg)}
+                  />
+                )}
+                <StatTile
+                  label="Total"
+                  value={formatKwhAndCostLine(insightsData.gasFigures.kwh, insightsData.gasFigures.total)}
+                />
+                <StatTile
+                  label={`Average per ${insightsPeriodLabel}`}
+                  value={formatAveragePerPeriodLine(
+                    insightsData.gasFigures.kwh,
+                    insightsData.gasFigures.total,
+                    insightsData.gasPeriodCount,
+                  )}
+                />
+              </div>
+            </div>
+          )}
+
+          {(insightsData.importMpans.length > 0 ||
+            insightsData.exportMpans.length > 0 ||
+            insightsData.gasMpans.length > 0) && (
+            <div className="usage-page__insights-category">
+              <h3 className="usage-page__insights-subheading">Net Total</h3>
+              <div className="usage-page__stat-grid">
+                <StatTile
+                  label="Total"
+                  value={formatKwhAndCostLine(insightsData.netFigures.kwh, insightsData.netFigures.total)}
+                />
+                <StatTile
+                  label={`Average per ${insightsPeriodLabel}`}
+                  value={formatAveragePerPeriodLine(
+                    insightsData.netFigures.kwh,
+                    insightsData.netFigures.total,
+                    insightsData.netPeriodCount,
+                  )}
+                />
+              </div>
+            </div>
+          )}
+
+          {insightsData.importMpans.length === 0 &&
+            insightsData.exportMpans.length === 0 &&
+            insightsData.gasMpans.length === 0 && (
+              <p className="usage-page__insights-empty">Select an MPAN above to see insights.</p>
+            )}
         </div>
       )}
 

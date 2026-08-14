@@ -73,10 +73,10 @@ export default function UsageByWeek() {
       </label>
       <div className="usage-page__month-nav">
         <button type="button" onClick={() => setYear((y) => y - 1)} aria-label="Previous year">
-          &larr;
+          &lt;
         </button>
         <button type="button" onClick={() => setYear((y) => y + 1)} aria-label="Next year">
-          &rarr;
+          &gt;
         </button>
       </div>
     </>
@@ -97,6 +97,7 @@ export default function UsageByWeek() {
       noDataMessage={`No usage data for ${year}.`}
       enableInsights
       insightsPeriodLabel="Week"
+      periodSummaryLabel={`${year}`}
     />
   )
 }

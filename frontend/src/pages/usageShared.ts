@@ -70,7 +70,7 @@ export function offPeakPct(f: MpanFigures): number | null {
 
 export function meterPointLabel(meterPoint: MeterPoint): string {
   if (meterPoint.meterType === 'GAS') return 'Gas'
-  return meterPoint.isExport ? 'Electricity (Export)' : 'Electricity (Import)'
+  return meterPoint.isExport ? 'Elec (Export)' : 'Elec (Import)'
 }
 
 export function formatKwh(value: number): string {
@@ -95,10 +95,10 @@ export function formatPercent(value: number | null): string {
 export type ChartView = 'usage' | 'cost' | 'netUsage' | 'netCost'
 
 export const CHART_VIEWS: { view: ChartView; label: string }[] = [
-  { view: 'usage', label: 'Usage (kWh)' },
-  { view: 'cost', label: 'Cost (£)' },
-  { view: 'netUsage', label: 'Net Usage (kWh)' },
-  { view: 'netCost', label: 'Net Cost (£)' },
+  { view: 'usage', label: 'kWh' },
+  { view: 'cost', label: '£' },
+  { view: 'netUsage', label: 'Net kWh' },
+  { view: 'netCost', label: 'Net £' },
 ]
 
 export function isNetView(view: ChartView): boolean {
@@ -117,6 +117,8 @@ export const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ]
+
+export const MONTH_NAMES_SHORT = MONTH_NAMES.map((name) => name.slice(0, 3))
 
 // Built from local calendar components (not parsed from an ISO string) so results are always
 // correct for the intended calendar date regardless of the viewer's time zone.
@@ -154,6 +156,13 @@ export function formatDayLabel(dateStr: string): string {
 export function formatDayLabelWithYear(dateStr: string): string {
   const [year] = dateStr.split('-')
   return `${formatDayLabel(dateStr)}-${year.slice(2)}`
+}
+
+// A reader-friendly full date ("10 Aug 2026"), for the Insights section's "Summary for X"
+// heading on the half-hour view, which is scoped to a single calendar day.
+export function formatFullDate(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-')
+  return `${Number(day)} ${MONTH_NAMES_SHORT[Number(month) - 1]} ${year}`
 }
 
 const CURRENT_YEAR = new Date().getFullYear()

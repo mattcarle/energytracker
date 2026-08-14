@@ -10,6 +10,7 @@ import {
   YAxis,
 } from 'recharts'
 import type { MeterPoint } from '../api/types'
+import { useIsMobile } from '../hooks/useIsMobile'
 import { meterPointLabel, type PeriodRow } from '../pages/usageShared'
 import './UsageBarChart.css'
 
@@ -61,6 +62,7 @@ function formatValue(value: number, metric: ChartMetric): string {
 }
 
 export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvailableByMpan }: UsageBarChartProps) {
+  const isMobile = useIsMobile()
   const data = rows.map((row) => {
     const point: Record<string, number | string> = { dayLabel: row.label }
     for (const mp of meterPoints) {
@@ -82,15 +84,17 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
   })
 
   // Thin out x-axis labels for a full month so they don't overlap; every day is still a
-  // separate bar group, only the tick labels are skipped.
-  const tickInterval = data.length > 15 ? Math.ceil(data.length / 15) - 1 : 0
+  // separate bar group, only the tick labels are skipped. Mobile gets a much lower cap since
+  // the same label count that fits a desktop-width chart collides at phone width.
+  const maxLabels = isMobile ? 6 : 15
+  const tickInterval = data.length > maxLabels ? Math.ceil(data.length / maxLabels) - 1 : 0
 
   // A hand-built legend rather than recharts' <Legend>: one entry per MPAN (two - peak and
   // off-peak - when the tariff has a split) plus a single shared "Standing charge" entry,
   // instead of one duplicated per MPAN's stacked bar.
   const legendEntries = [
     ...meterPoints.flatMap((mp, index) => {
-      const label = `MPAN ${mp.mpan} (${meterPointLabel(mp)})`
+      const label = meterPointLabel(mp)
       if (!(offPeakAvailableByMpan?.get(mp.mpan) ?? false)) {
         return [{ label, color: MPAN_COLORS[index % MPAN_COLORS.length] }]
       }
@@ -118,14 +122,25 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
             width={56}
           />
           <ReferenceLine y={0} stroke="var(--text)" />
-          <Tooltip
-            formatter={(value, name) => [formatValue(Number(value), metric), name]}
-            contentStyle={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-h)' }}
-            labelStyle={{ color: 'var(--text-h)' }}
-          />
+          {/* The tooltip's own box is wide enough to cover most of a phone-width chart under
+              the finger that triggered it, so it's dropped entirely on mobile rather than shown. */}
+          {!isMobile && (
+            <Tooltip
+              formatter={(value, name) => [formatValue(Number(value), metric), name]}
+              contentStyle={{
+                background: 'var(--bg)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-h)',
+                fontSize: 11,
+                padding: '6px 8px',
+              }}
+              labelStyle={{ color: 'var(--text-h)', marginBottom: 2 }}
+              itemStyle={{ padding: 0 }}
+            />
+          )}
           {meterPoints.map((mp, index) => {
             const hasSplit = offPeakAvailableByMpan?.get(mp.mpan) ?? false
-            const label = `MPAN ${mp.mpan} (${meterPointLabel(mp)})`
+            const label = meterPointLabel(mp)
             return (
               // Recharts tracks each stack segment's position by registration (mount) order,
               // not by <Bar> declaration order in a given render - a bar mounts once and stays

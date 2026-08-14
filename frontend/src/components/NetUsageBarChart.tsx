@@ -9,6 +9,7 @@ import {
   YAxis,
 } from 'recharts'
 import type { MeterPoint } from '../api/types'
+import { useIsMobile } from '../hooks/useIsMobile'
 import type { PeriodRow } from '../pages/usageShared'
 import './UsageBarChart.css'
 
@@ -27,6 +28,7 @@ function formatValue(value: number, metric: NetChartMetric): string {
 // The net figure per period - kwh/total summed across the included MPANs, with export already
 // signed negative upstream - the same value the table's TOTAL columns show.
 export default function NetUsageBarChart({ rows, meterPoints, metric }: NetUsageBarChartProps) {
+  const isMobile = useIsMobile()
   const data = rows.map((row) => {
     let value = 0
     for (const mp of meterPoints) {
@@ -38,8 +40,10 @@ export default function NetUsageBarChart({ rows, meterPoints, metric }: NetUsage
   })
 
   // Thin out x-axis labels for a full month so they don't overlap; every day is still a
-  // separate bar, only the tick labels are skipped.
-  const tickInterval = data.length > 15 ? Math.ceil(data.length / 15) - 1 : 0
+  // separate bar, only the tick labels are skipped. Mobile gets a much lower cap since the
+  // same label count that fits a desktop-width chart collides at phone width.
+  const maxLabels = isMobile ? 6 : 15
+  const tickInterval = data.length > maxLabels ? Math.ceil(data.length / maxLabels) - 1 : 0
 
   return (
     <div className="usage-bar-chart">
@@ -53,11 +57,22 @@ export default function NetUsageBarChart({ rows, meterPoints, metric }: NetUsage
             width={56}
           />
           <ReferenceLine y={0} stroke="var(--text)" />
-          <Tooltip
-            formatter={(value) => [formatValue(Number(value), metric), metric === 'kwh' ? 'Net usage' : 'Net cost']}
-            contentStyle={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-h)' }}
-            labelStyle={{ color: 'var(--text-h)' }}
-          />
+          {/* The tooltip's own box is wide enough to cover most of a phone-width chart under
+              the finger that triggered it, so it's dropped entirely on mobile rather than shown. */}
+          {!isMobile && (
+            <Tooltip
+              formatter={(value) => [formatValue(Number(value), metric), metric === 'kwh' ? 'Net usage' : 'Net cost']}
+              contentStyle={{
+                background: 'var(--bg)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-h)',
+                fontSize: 11,
+                padding: '6px 8px',
+              }}
+              labelStyle={{ color: 'var(--text-h)', marginBottom: 2 }}
+              itemStyle={{ padding: 0 }}
+            />
+          )}
           <Bar dataKey="value" fill="var(--accent)" name={metric === 'kwh' ? 'Net usage' : 'Net cost'} />
         </BarChart>
       </ResponsiveContainer>
