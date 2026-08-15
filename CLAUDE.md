@@ -43,7 +43,8 @@ Spring Boot REST API that integrates with the Octopus Energy API to track electr
 ### Key Configuration
 
 - **octopus.properties** - Octopus Energy API base URL and meter config (account number and auth token live in the `OCTOPUS_CREDENTIALS` table instead, entered via the first-run admin setup wizard)
-- **application.properties** - H2 database (file-based at `~/h2db/energytracker`), Hibernate settings
+- **application.properties** - settings common to every profile (Hibernate/JPA, H2 driver credentials) plus `spring.profiles.active` (defaults to `dev`)
+- **application-dev.properties** / **application-prod.properties** - per-profile settings: H2 database file path, and whether the H2 console/Swagger UI/HTTPS are enabled. `prod` disables the H2 console and Swagger UI, requires HTTPS (placeholder keystore settings - see README.md), and uses a separate database file from `dev`
 - **schema.sql** - Database schema initialization
 
 ### Authentication
