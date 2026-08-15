@@ -80,7 +80,13 @@ function meterPointLabel(meterType: string, isExport: boolean): string {
   return isExport ? 'Electricity (Export)' : 'Electricity (Import)'
 }
 
-export default function ManageData() {
+interface ManageDataProps {
+  // Notified with the latest tariff statuses every time this page fetches them, so App can keep
+  // its "is Day/Night setup still incomplete" gate in sync without a second fetch of its own.
+  onTariffStatusChange?: (statuses: DayAndNightTariffStatus[]) => void
+}
+
+export default function ManageData({ onTariffStatusChange }: ManageDataProps) {
   const [details, setDetails] = useState<MeterPointDetails[] | null>(null)
   const [dateRanges, setDateRanges] = useState<Map<string, UsageDateRange> | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -117,11 +123,12 @@ export default function ManageData() {
         setDetails(combined)
         setDateRanges(new Map(ranges.map((r) => [r.mpan, r])))
         setDayAndNightTariffs(tariffStatuses)
+        onTariffStatusChange?.(tariffStatuses)
       })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : 'Failed to load account details')
       })
-  }, [])
+  }, [onTariffStatusChange])
 
   useEffect(() => {
     refresh()

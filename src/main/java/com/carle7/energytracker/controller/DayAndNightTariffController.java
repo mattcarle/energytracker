@@ -4,6 +4,7 @@ import com.carle7.energytracker.dto.DayAndNightTariffStatus;
 import com.carle7.energytracker.model.DayAndNightTariff;
 import com.carle7.energytracker.repository.AgreementRepository;
 import com.carle7.energytracker.repository.DayAndNightTariffRepository;
+import com.carle7.energytracker.service.OctopusService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -23,6 +25,9 @@ public class DayAndNightTariffController {
 
     @Autowired
     private AgreementRepository agreementRepository;
+
+    @Autowired
+    private OctopusService octopusService;
 
     @GetMapping
     public List<DayAndNightTariff> getAll() {
@@ -62,6 +67,7 @@ public class DayAndNightTariffController {
             return ResponseEntity.badRequest().build();
         }
         DayAndNightTariff saved = dayAndNightTariffRepository.save(tariff);
+        recalculateHalfHourlyRatesIfComplete();
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 
@@ -73,6 +79,7 @@ public class DayAndNightTariffController {
                     existing.setNightRateValidFrom(tariff.getNightRateValidFrom());
                     existing.setDayRateValidFrom(tariff.getDayRateValidFrom());
                     DayAndNightTariff updated = dayAndNightTariffRepository.save(existing);
+                    recalculateHalfHourlyRatesIfComplete();
                     return ResponseEntity.ok(updated);
                 })
                 .orElse(ResponseEntity.notFound().build());
@@ -85,5 +92,20 @@ public class DayAndNightTariffController {
         }
         dayAndNightTariffRepository.deleteById(id);
         return ResponseEntity.noContent().build();
+    }
+
+    // UNIT_RATE_BY_HALF_HOUR is derived from unit_rate plus each tariff's configured Day/Night
+    // valid-from times (see OctopusService.populateHalfHourlyUnitRates), so a tariff saved here
+    // doesn't take effect there until it's recomputed. Only worth doing once every tariff that
+    // needs Day/Night rates has one configured - recomputing on a still-incomplete save would
+    // just repeat the same "no time boundary yet" fallback loadAccountData already left behind.
+    private void recalculateHalfHourlyRatesIfComplete() {
+        List<String> tariffCodesRequiringSetup = agreementRepository.findTariffCodesRequiringDayAndNightRates();
+        Set<String> configuredTariffCodes = dayAndNightTariffRepository.findAll().stream()
+                .map(DayAndNightTariff::getTariffCode)
+                .collect(Collectors.toSet());
+        if (configuredTariffCodes.containsAll(tariffCodesRequiringSetup)) {
+            octopusService.populateHalfHourlyUnitRates();
+        }
     }
 }

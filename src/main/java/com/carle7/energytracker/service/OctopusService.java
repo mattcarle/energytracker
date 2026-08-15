@@ -207,12 +207,24 @@ public class OctopusService {
                 standingChargeRepository.saveAll(newStandingCharges);
                 standingChargeCount += existingStandingChargeKeys.size() + newStandingCharges.size();
 
-                // Check if this is a day-and-night tariff
+                Set<String> existingUnitRateKeys = unitRateKeys(agreement.getId());
+
+                // A DAY_AND_NIGHT_TARIFF row only exists once an admin has configured this
+                // tariff's day/night valid-from times, which itself depends on unit_rate already
+                // holding DAY/NIGHT rows for it (see DayAndNightTariffController). On a genuine
+                // first-time load neither exists yet, so a miss here doesn't tell us whether this
+                // is really a standard tariff or a day/night tariff nobody has loaded rates for
+                // yet - probe the standard endpoint and only fall back to day/night if it comes
+                // back empty (a day/night tariff has no standard-rate line item at all).
                 boolean isDayAndNightTariff = dayAndNightTariffRepository
                         .findByTariffCode(agreement.getTariffCode())
                         .isPresent();
 
-                Set<String> existingUnitRateKeys = unitRateKeys(agreement.getId());
+                List<UnitRate> standardRates = null;
+                if (!isDayAndNightTariff) {
+                    standardRates = octopusApiService.fetchAllUnitRates(agreement, meterType, "standard", "STANDARD");
+                    isDayAndNightTariff = standardRates.isEmpty();
+                }
 
                 if (isDayAndNightTariff) {
                     // Load day and night rates from separate endpoints
@@ -220,7 +232,6 @@ public class OctopusService {
                             .filter(r -> !existingUnitRateKeys.contains(unitRateKey(r)))
                             .toList();
                     unitRateRepository.saveAll(dayRates);
-                    unitRateCount += dayRates.size();
 
                     var nightRates = octopusApiService.fetchAllUnitRates(agreement, meterType, "night", "NIGHT").stream()
                             .filter(r -> !existingUnitRateKeys.contains(unitRateKey(r)))
@@ -229,11 +240,11 @@ public class OctopusService {
                     unitRateCount += existingUnitRateKeys.size() + dayRates.size() + nightRates.size();
                 } else {
                     // Load standard rates
-                    var unitRates = octopusApiService.fetchAllUnitRates(agreement, meterType, "standard", "STANDARD").stream()
+                    var newStandardRates = standardRates.stream()
                             .filter(r -> !existingUnitRateKeys.contains(unitRateKey(r)))
                             .toList();
-                    unitRateRepository.saveAll(unitRates);
-                    unitRateCount += existingUnitRateKeys.size() + unitRates.size();
+                    unitRateRepository.saveAll(newStandardRates);
+                    unitRateCount += existingUnitRateKeys.size() + newStandardRates.size();
                 }
             }
             result.setStandingChargeCount(standingChargeCount);
