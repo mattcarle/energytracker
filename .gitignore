@@ -37,3 +37,6 @@ build/
 
 ### Full real-data export for local testing (trimmed subset is committed instead) ###
 /src/test/resources/half-hourly-integration-data-full.sql
+
+### Logs from start-dev.sh/start-prod.sh ###
+/logs/

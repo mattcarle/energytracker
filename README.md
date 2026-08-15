@@ -43,8 +43,12 @@ users, who must change their password on first login.
 
 **Configuration**:
 - `octopus.properties` — Octopus Energy API base URL and meter config.
-- `application.properties` — H2 database (file-based at `~/h2db/energytracker`), Hibernate,
-  and Swagger settings.
+- `application.properties` — settings common to every environment (JPA/Hibernate, H2 driver
+  credentials). Which profile is active — `dev` or `prod` — is also set here, via
+  `spring.profiles.active` (defaults to `dev`; override for a real deployment).
+- `application-dev.properties` / `application-prod.properties` — everything that differs
+  between environments: the H2 database file, and whether the H2 console/Swagger UI/HTTPS are
+  on. See [Running in production](#running-in-production) below for what `prod` changes.
 - `schema.sql` — database schema initialization.
 
 ### Frontend (`frontend/`)
@@ -66,6 +70,13 @@ In dev mode, Vite proxies requests to `/api` through to `http://localhost:8080` 
 - Java 21
 - Node.js (for the frontend)
 
+The backend picks a profile via `spring.profiles.active` (see `application.properties`),
+which controls the H2 database file location and whether the H2 console/Swagger UI/HTTPS are
+on. It defaults to `dev` — nothing extra is needed to run it locally. See
+[Running in production](#running-in-production) for deploying with the `prod` profile instead.
+
+## Running in development
+
 ### 1. Start the backend
 
 From the repository root, using the Maven Wrapper:
@@ -75,11 +86,12 @@ mvnw.cmd spring-boot:run          # Windows
 ./mvnw spring-boot:run            # Linux/Mac
 ```
 
-This starts the API on **http://localhost:8080**. On first run, no admin user exists yet —
-open the app and follow the setup wizard to create an admin password and enter your Octopus
-Energy account number and API auth token.
+This starts the API on **http://localhost:8080** using the `dev` profile (H2 database file at
+`~/h2db/energytracker`). On first run, no admin user exists yet — open the app and follow the
+setup wizard to create an admin password and enter your Octopus Energy account number and API
+auth token.
 
-Useful backend URLs:
+Useful backend URLs (dev only — both are disabled under the `prod` profile):
 - API root: http://localhost:8080/api
 - Swagger UI: http://localhost:8080/swagger-ui.html
 - H2 Console: http://localhost:8080/h2-console
@@ -97,7 +109,75 @@ npm run dev
 This starts the Vite dev server (default **http://localhost:5173**) with API calls proxied
 to the backend on port 8080. Open that URL in your browser to use the UI.
 
-### Other useful commands
+## Running in production
+
+The `prod` profile (`application-prod.properties`) differs from `dev` in three ways:
+
+- **H2 console and Swagger UI are disabled** — neither should be reachable outside a
+  developer's own machine.
+- **HTTPS is required** (`server.ssl.enabled=true`, on port `8443`) rather than plain HTTP.
+- **A separate database file** (`~/h2db/energytracker-prod`) — so a prod run never reads or
+  writes dev's data, even on the same machine.
+
+### 1. Provide a TLS certificate
+
+`application-prod.properties` ships with placeholder keystore settings pointing at
+`/etc/energytracker/keystore.p12`, which won't exist until you put a real certificate there.
+For a real deployment, use a certificate from your CA/reverse proxy setup; for local testing
+of the `prod` profile, generate a self-signed one:
+
+```bash
+keytool -genkeypair -alias energytracker -keyalg RSA -keysize 2048 -validity 365 \
+  -storetype PKCS12 -keystore keystore.p12 -storepass changeit \
+  -dname "CN=localhost, OU=Dev, O=EnergyTracker, C=GB"
+```
+
+Place the resulting file at the configured `server.ssl.key-store` path (or point that property
+elsewhere), and set a real `server.ssl.key-store-password`. Every `server.ssl.*` property can
+also be supplied as an environment variable instead of editing the properties file directly
+(e.g. `SERVER_SSL_KEY_STORE_PASSWORD`), which is the safer option for a real deployment.
+
+### 2. Build and run
+
+```bash
+mvnw.cmd clean package                                  # Windows
+./mvnw clean package                                     # Linux/Mac
+
+java -jar target/energytracker-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod
+```
+
+`SPRING_PROFILES_ACTIVE=prod` works the same way as an environment variable, if you'd rather
+not pass it as a command-line argument. Once running, the API is served over
+**https://localhost:8443** (or whatever `server.port` you've configured).
+
+On first run, exactly as in dev, no admin user exists yet — open the app and follow the setup
+wizard to create an admin password and enter your Octopus Energy account number and API auth
+token.
+
+The frontend still needs building and serving separately (`npm run build` in `frontend/`,
+per the SPA architecture described above) — this repo doesn't yet wire that build into the
+backend's own jar/static resources.
+
+### 3. Point the UI at the prod backend
+
+`npm run preview` (which serves the `npm run build` output, default **http://localhost:4173**)
+reuses the same `/api` proxy as `npm run dev`, which defaults to `http://localhost:8080` — the
+`dev` backend. To test the UI against a locally running `prod`-profile backend instead, point
+the proxy at it with `VITE_API_PROXY_TARGET`:
+
+```bash
+cd frontend
+VITE_API_PROXY_TARGET=https://localhost:8443 npm run preview      # Windows/Linux/Mac (bash)
+```
+
+```powershell
+$env:VITE_API_PROXY_TARGET = 'https://localhost:8443'; npm run preview   # PowerShell
+```
+
+Without this, `/api/*` requests from the UI fail with a 502 (Vite's proxy tries the default
+dev target on port 8080, where nothing is listening).
+
+## Other useful commands
 
 ```bash
 # Backend
