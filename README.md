@@ -107,7 +107,9 @@ npm run dev
 ```
 
 This starts the Vite dev server (default **http://localhost:5173**) with API calls proxied
-to the backend on port 8080. Open that URL in your browser to use the UI.
+to the backend on port 8080. The app is served under `/energytracker` (matching the production
+Caddy routing - see [Deploying with Docker](#deploying-with-docker) below), so open
+**http://localhost:5173/energytracker/** — visiting the bare root redirects there automatically.
 
 ## Running in production
 
@@ -207,8 +209,9 @@ The included `docker-compose.yml` runs the app as two containers:
    docker compose up -d --build
    ```
 
-3. Open `https://<SITE_ADDRESS>` (or `https://localhost` for a local test — accept the
-   self-signed certificate warning). On first run, no admin user exists yet — the setup wizard
+3. Open `https://<SITE_ADDRESS>/energytracker/` (or `https://localhost/energytracker/` for a
+   local test — accept the self-signed certificate warning; visiting the bare domain root
+   redirects there automatically). On first run, no admin user exists yet — the setup wizard
    walks you through creating an admin password and entering your Octopus Energy account
    number and API auth token.
 

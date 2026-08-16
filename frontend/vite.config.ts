@@ -11,6 +11,10 @@ export default defineConfig(({ mode }) => {
   const apiProxyTarget = env.VITE_API_PROXY_TARGET ?? 'http://localhost:8080'
 
   return {
+    // The app is served at https://<domain>/energytracker/ (see frontend/Caddyfile), not the
+    // site root, so every built asset reference needs this prefix or the browser requests them
+    // from the wrong path once index.html is served from a subpath.
+    base: '/energytracker/',
     plugins: [react()],
     server: {
       // Binds the dev server to all network interfaces, not just localhost, so it's reachable at

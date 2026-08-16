@@ -6,18 +6,29 @@
 
 encode gzip
 
-# The React app only ever calls relative /api/... paths (see frontend/src/api/client.ts), so
-# this is the only routing decision needed: send those to the backend, serve everything else
-# as the built static app. Caddy reorders bare directives by its own fixed precedence
+# The app lives at /energytracker (see frontend/vite.config.ts's `base`), and only ever calls
+# relative /api/... paths at the site root (see frontend/src/api/client.ts) - those are the only
+# routing decisions needed. Caddy reorders bare directives by its own fixed precedence
 # (try_files/file_server always run before reverse_proxy, regardless of source order), so
-# without `handle` blocks every /api/* request gets rewritten to /index.html by try_files
-# before reverse_proxy ever sees it - the API is unreachable. `handle` blocks are evaluated
-# in the order written and are mutually exclusive, which fixes that.
+# `handle`/`handle_path` blocks are used throughout - they're evaluated in the order written and
+# are mutually exclusive, which keeps that reordering from routing requests to the wrong place.
 handle /api/* {
 	reverse_proxy app:8080
 }
 
-handle {
+# redir's 2-arg form ("<to> <code>") is ambiguous with its "[<matcher>] <to>" form - Caddy
+# treats a bare 2nd arg as the matcher and the status code as the destination, producing a
+# broken redirect to a literal "308" URL. The 3-arg form with an explicit "match everything"
+# matcher (*) is unambiguous, so that's used here even though the code is unconditional.
+handle / {
+	redir * /energytracker/ 308
+}
+
+handle /energytracker {
+	redir * /energytracker/ 308
+}
+
+handle_path /energytracker/* {
 	root * /srv
 	file_server
 	try_files {path} /index.html
