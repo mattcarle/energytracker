@@ -20,6 +20,11 @@ services:
       - h2-data:/data
     expose:
       - "8080"
+    # Caps the container at 4GB so it can be tested under the kind of memory ceiling a small
+    # cloud instance would impose - the JVM detects this cgroup limit automatically (Java 10+
+    # container support) and sizes its default max heap as a fraction of it, rather than the
+    # host machine's full RAM.
+    mem_limit: 4g
 
   caddy:
     build:
