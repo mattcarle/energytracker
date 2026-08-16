@@ -4,6 +4,7 @@ import type { AuthUser, DayAndNightTariffStatus } from './api/types'
 import Modal from './components/Modal'
 import { useIsMobile } from './hooks/useIsMobile'
 import ChangePassword from './pages/ChangePassword'
+import ChangePasswordSettings from './pages/ChangePasswordSettings'
 import Login from './pages/Login'
 import ManageData from './pages/ManageData'
 import ManageUsers from './pages/ManageUsers'
@@ -16,7 +17,7 @@ import UsageByYear from './pages/UsageByYear'
 import './App.css'
 
 type UsagePage = 'usage-half-hour' | 'usage-day' | 'usage-week' | 'usage-month' | 'usage-year'
-type AdminPage = 'manage-data' | 'manage-users'
+type AdminPage = 'manage-data' | 'manage-users' | 'change-password-settings'
 type Page = UsagePage | AdminPage
 type AuthPhase = 'loading' | 'setup' | 'login' | 'change-password' | 'authenticated'
 
@@ -124,7 +125,7 @@ function App() {
   // than a nav click, and needs to stick on mobile too.
   useEffect(() => {
     if (needsDayAndNightSetup) return
-    if (isMobile && (page === 'manage-data' || page === 'manage-users')) {
+    if (isMobile && (page === 'manage-data' || page === 'manage-users' || page === 'change-password-settings')) {
       setPage('usage-day')
     }
   }, [isMobile, page, needsDayAndNightSetup])
@@ -194,7 +195,7 @@ function App() {
   }
 
   const onUsagePage = USAGE_PAGES.some((p) => p.page === page)
-  const onAdminPage = page === 'manage-data' || page === 'manage-users'
+  const onAdminPage = page === 'manage-data' || page === 'manage-users' || page === 'change-password-settings'
 
   return (
     <div className="app-shell">
@@ -255,6 +256,15 @@ function App() {
                   >
                     Manage Users
                   </button>
+                  <button
+                    type="button"
+                    className={page === 'change-password-settings' ? 'active' : ''}
+                    onClick={() => selectAdminPage('change-password-settings')}
+                    disabled={needsDayAndNightSetup}
+                    title={needsDayAndNightSetup ? 'Finish Day/Night tariff setup first' : undefined}
+                  >
+                    Change Password
+                  </button>
                 </div>
               )}
             </div>
@@ -287,6 +297,9 @@ function App() {
         <ManageData onTariffStatusChange={applyDayAndNightStatuses} />
       )}
       {page === 'manage-users' && user?.role === 'ADMIN' && <ManageUsers currentUserId={user.id} />}
+      {page === 'change-password-settings' && user?.role === 'ADMIN' && (
+        <ChangePasswordSettings username={user.username} />
+      )}
       {showDayAndNightDialog && (
         <Modal
           title="Day/Night tariff detected"

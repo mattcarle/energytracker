@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { changePassword } from '../api/client'
+import PasswordInput from '../components/PasswordInput'
 import './AuthScreen.css'
 
 interface ChangePasswordProps {
@@ -38,33 +39,45 @@ export default function ChangePassword({ username, onComplete }: ChangePasswordP
           Hi {username}, this account was just created for you. Choose a new password before continuing.
         </p>
         <form className="auth-form" onSubmit={handleSubmit}>
+          {/* No visible username field on this form - gives the browser's password manager
+              something to associate the credential with, so it doesn't have to ask. */}
+          <input
+            type="text"
+            name="username"
+            value={username}
+            autoComplete="username"
+            readOnly
+            className="visually-hidden"
+            aria-hidden="true"
+            tabIndex={-1}
+          />
           <label className="auth-form__field">
             <span>Current (temporary) password</span>
-            <input
-              type="password"
+            <PasswordInput
               value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
+              onChange={setCurrentPassword}
+              autoComplete="current-password"
               required
               autoFocus
             />
           </label>
           <label className="auth-form__field">
             <span>New password</span>
-            <input
-              type="password"
+            <PasswordInput
               value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
+              onChange={setNewPassword}
               minLength={8}
+              autoComplete="new-password"
               required
             />
           </label>
           <label className="auth-form__field">
             <span>Confirm new password</span>
-            <input
-              type="password"
+            <PasswordInput
               value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
+              onChange={setConfirmPassword}
               minLength={8}
+              autoComplete="new-password"
               required
             />
           </label>

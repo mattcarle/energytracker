@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { setupAdmin } from '../api/client'
 import type { AuthUser, SetupResult } from '../api/types'
+import PasswordInput from '../components/PasswordInput'
 import './AuthScreen.css'
 
 interface SetupProps {
@@ -65,24 +66,37 @@ export default function Setup({ onComplete }: SetupProps) {
           (username: <code>admin</code>) and connect your Octopus Energy account.
         </p>
         <form className="auth-form" onSubmit={handleSubmit}>
+          {/* Fixed username, with no visible input for it - this gives the browser's password
+              manager something to associate the admin password with, so it doesn't have to ask
+              the user to fill in a username by hand when offering to save it. */}
+          <input
+            type="text"
+            name="username"
+            value="admin"
+            autoComplete="username"
+            readOnly
+            className="visually-hidden"
+            aria-hidden="true"
+            tabIndex={-1}
+          />
           <label className="auth-form__field">
             <span>Admin password</span>
-            <input
-              type="password"
+            <PasswordInput
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={setPassword}
               minLength={8}
+              autoComplete="new-password"
               required
               autoFocus
             />
           </label>
           <label className="auth-form__field">
             <span>Confirm password</span>
-            <input
-              type="password"
+            <PasswordInput
               value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
+              onChange={setConfirmPassword}
               minLength={8}
+              autoComplete="new-password"
               required
             />
           </label>
@@ -97,11 +111,11 @@ export default function Setup({ onComplete }: SetupProps) {
           </label>
           <label className="auth-form__field">
             <span>Octopus API auth token</span>
-            <input
-              type="password"
+            <PasswordInput
               value={octopusAuthToken}
-              onChange={(e) => setOctopusAuthToken(e.target.value)}
+              onChange={setOctopusAuthToken}
               placeholder="sk_live_..."
+              autoComplete="off"
               required
             />
           </label>

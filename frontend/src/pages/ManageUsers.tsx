@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { createUser, deleteUser, getUsers } from '../api/client'
 import type { AuthUser, UserRole } from '../api/types'
+import PasswordInput from '../components/PasswordInput'
 import './ManageUsers.css'
 
 interface ManageUsersProps {
@@ -86,15 +87,20 @@ export default function ManageUsers({ currentUserId }: ManageUsersProps) {
       <form className="manage-users__form" onSubmit={handleCreate}>
         <label>
           <span>Username</span>
-          <input value={username} onChange={(e) => setUsername(e.target.value)} required />
+          <input
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            autoComplete="username"
+            required
+          />
         </label>
         <label>
           <span>Initial password</span>
-          <input
-            type="password"
+          <PasswordInput
             value={initialPassword}
-            onChange={(e) => setInitialPassword(e.target.value)}
+            onChange={setInitialPassword}
             minLength={8}
+            autoComplete="new-password"
             required
           />
         </label>

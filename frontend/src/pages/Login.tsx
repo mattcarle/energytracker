@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { login } from '../api/client'
 import type { AuthUser } from '../api/types'
+import PasswordInput from '../components/PasswordInput'
 import './AuthScreen.css'
 
 interface LoginProps {
@@ -31,11 +32,17 @@ export default function Login({ onComplete }: LoginProps) {
         <form className="auth-form" onSubmit={handleSubmit}>
           <label className="auth-form__field">
             <span>Username</span>
-            <input value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus />
+            <input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
+              required
+              autoFocus
+            />
           </label>
           <label className="auth-form__field">
             <span>Password</span>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <PasswordInput value={password} onChange={setPassword} autoComplete="current-password" required />
           </label>
           {error && <p className="auth-form__error">{error}</p>}
           <button type="submit" className="auth-form__submit" disabled={submitting}>
