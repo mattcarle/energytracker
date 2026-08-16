@@ -40,3 +40,6 @@ build/
 
 ### Logs from start-dev.sh/start-prod.sh ###
 /logs/
+
+### Docker Compose overrides (deployment-specific, e.g. SITE_ADDRESS) ###
+/.env

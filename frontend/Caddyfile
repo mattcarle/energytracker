@@ -1,0 +1,24 @@
+# SITE_ADDRESS defaults to "localhost" for local testing (Caddy issues a locally-trusted cert
+# for it automatically). For a real deployment, set SITE_ADDRESS to your domain in the .env file
+# next to docker-compose.yml - Caddy then obtains and renews a real Let's Encrypt certificate for
+# it on its own, as long as DNS points here and ports 80/443 are reachable from the internet.
+{$SITE_ADDRESS:localhost}
+
+encode gzip
+
+# The React app only ever calls relative /api/... paths (see frontend/src/api/client.ts), so
+# this is the only routing decision needed: send those to the backend, serve everything else
+# as the built static app. Caddy reorders bare directives by its own fixed precedence
+# (try_files/file_server always run before reverse_proxy, regardless of source order), so
+# without `handle` blocks every /api/* request gets rewritten to /index.html by try_files
+# before reverse_proxy ever sees it - the API is unreachable. `handle` blocks are evaluated
+# in the order written and are mutually exclusive, which fixes that.
+handle /api/* {
+	reverse_proxy app:8080
+}
+
+handle {
+	root * /srv
+	file_server
+	try_files {path} /index.html
+}

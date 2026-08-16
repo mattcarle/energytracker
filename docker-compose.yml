@@ -1,0 +1,44 @@
+services:
+  app:
+    build:
+      context: .
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8080
+      # Caddy terminates TLS in front of this service - it only ever talks plain HTTP over the
+      # Docker network, so the prod profile's own keystore-based HTTPS is turned off here.
+      SERVER_SSL_ENABLED: "false"
+      # Explicit path instead of the prod profile's default "~/h2db/..." - ~ would expand
+      # relative to whatever user the JVM runs as, which is fragile inside a container.
+      # DB_CLOSE_DELAY=-1 keeps the embedded DB open for the JVM's life - without it, H2
+      # shuts the database down the instant its last pooled connection closes (e.g. when
+      # HikariCP's default 30-minute maxLifetime retires an idle connection), and the next
+      # request fails with "The database has been closed".
+      SPRING_DATASOURCE_URL: jdbc:h2:file:/data/energytracker-prod;DB_CLOSE_DELAY=-1
+    volumes:
+      - h2-data:/data
+    expose:
+      - "8080"
+
+  caddy:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
+    volumes:
+      # Caddy's own state (ACME account + issued certs) - keep this, or a restart re-requests
+      # certificates and can hit Let's Encrypt's rate limits.
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  h2-data:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,6 @@
+target/
+frontend/
+.git/
+.idea/
+*.log
+logs/

@@ -177,6 +177,80 @@ $env:VITE_API_PROXY_TARGET = 'https://localhost:8443'; npm run preview   # Power
 Without this, `/api/*` requests from the UI fail with a 502 (Vite's proxy tries the default
 dev target on port 8080, where nothing is listening).
 
+## Deploying with Docker
+
+The included `docker-compose.yml` runs the app as two containers:
+
+- **`app`** — the Spring Boot backend, built by the root `Dockerfile`, running the `prod`
+  profile on plain HTTP internally (port 8080, not published to the host). Its H2 database
+  file lives in the `h2-data` named volume, so it survives container rebuilds/restarts.
+- **`caddy`** — built by `frontend/Dockerfile`, serves the built React static files and
+  reverse-proxies `/api/*` to `app`. It also terminates TLS: for a real domain it obtains and
+  renews a Let's Encrypt certificate automatically; for `localhost` it issues a locally-trusted
+  self-signed one. Ports 80/443 are published to the host, and its ACME account/certs live in
+  the `caddy-data`/`caddy-config` volumes, so a restart doesn't re-request them and risk
+  Let's Encrypt's rate limits.
+
+### First-time deployment
+
+1. Copy `.env.example` to `.env` and set `SITE_ADDRESS` to your real domain (DNS must already
+   point at this host, with ports 80/443 reachable from the internet, for Caddy to obtain a
+   Let's Encrypt certificate). Leave it unset/`localhost` for local testing only.
+
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Build and start both containers:
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+3. Open `https://<SITE_ADDRESS>` (or `https://localhost` for a local test — accept the
+   self-signed certificate warning). On first run, no admin user exists yet — the setup wizard
+   walks you through creating an admin password and entering your Octopus Energy account
+   number and API auth token.
+
+Check container status/logs with:
+
+```bash
+docker compose ps
+docker compose logs -f app       # backend logs
+docker compose logs -f caddy     # reverse proxy / TLS logs
+```
+
+### Updating after code or config changes
+
+`docker compose up -d --build` rebuilds every service's image and recreates only the
+containers whose image or config actually changed, so it's safe to run after any change — but
+rebuilding both images on every change is slower than it needs to be. To target just the
+service you touched:
+
+```bash
+# Backend code (src/), pom.xml, or Dockerfile changes
+docker compose build app
+docker compose up -d app
+
+# Frontend code (frontend/src/), frontend/Dockerfile, or frontend/Caddyfile changes
+docker compose build caddy
+docker compose up -d caddy
+```
+
+If you only changed `docker-compose.yml` itself (e.g. an environment variable) with no
+Dockerfile/source changes, skip the `build` step — `docker compose up -d` alone detects the
+config change and recreates the affected container(s).
+
+The `h2-data` volume is untouched by rebuilds or `docker compose down`, so the database
+persists across updates. Only `docker compose down -v` (or manually removing the volume)
+deletes it — avoid that unless you actually intend to wipe all data.
+
+### Local testing without a real domain
+
+Leaving `SITE_ADDRESS` unset (or `.env` absent) makes Caddy serve `https://localhost` with a
+locally-trusted certificate — no DNS or public ports required. This is the same `docker
+compose up -d --build` command as above; nothing else changes.
+
 ## Other useful commands
 
 ```bash
