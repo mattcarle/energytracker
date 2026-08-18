@@ -181,6 +181,7 @@ export interface MpanIntegrityReport {
   agreements: IntegrityCheckResult
   standingCharges: IntegrityCheckResult
   unitRates: IntegrityCheckResult
+  usage: IntegrityCheckResult
 }
 
 export interface DataIntegrityReport {

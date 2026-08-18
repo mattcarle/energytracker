@@ -8,16 +8,18 @@ public class MpanIntegrityReport {
     private final IntegrityCheckResult agreements;
     private final IntegrityCheckResult standingCharges;
     private final IntegrityCheckResult unitRates;
+    private final IntegrityCheckResult usage;
 
     public MpanIntegrityReport(String mpan, String meterType, boolean isExport,
                                 IntegrityCheckResult agreements, IntegrityCheckResult standingCharges,
-                                IntegrityCheckResult unitRates) {
+                                IntegrityCheckResult unitRates, IntegrityCheckResult usage) {
         this.mpan = mpan;
         this.meterType = meterType;
         this.isExport = isExport;
         this.agreements = agreements;
         this.standingCharges = standingCharges;
         this.unitRates = unitRates;
+        this.usage = usage;
     }
 
     public String getMpan() {
@@ -42,5 +44,9 @@ public class MpanIntegrityReport {
 
     public IntegrityCheckResult getUnitRates() {
         return unitRates;
+    }
+
+    public IntegrityCheckResult getUsage() {
+        return usage;
     }
 }

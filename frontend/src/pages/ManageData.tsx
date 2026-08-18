@@ -317,8 +317,8 @@ export default function ManageData({ onTariffStatusChange }: ManageDataProps) {
         <div className="manage-data__action-card">
           <h2>Data integrity check</h2>
           <p>
-            Checks that agreements, standing charges and unit rates are contiguous for every MPAN,
-            with no gaps between records.
+            Checks that agreements, standing charges, unit rates and usage readings are contiguous
+            for every MPAN, with no gaps between records.
           </p>
           <button type="button" onClick={performIntegrityCheck} disabled={loadingIntegrity}>
             {loadingIntegrity ? 'Checking…' : 'Check Data Integrity'}
@@ -553,6 +553,7 @@ export default function ManageData({ onTariffStatusChange }: ManageDataProps) {
                   ['Agreements', mpanReport.agreements],
                   ['Standing charges', mpanReport.standingCharges],
                   ['Unit rates', mpanReport.unitRates],
+                  ['Usage', mpanReport.usage],
                 ] as const
               ).map(([label, result]) => (
                 <div className="integrity-report__category" key={label}>

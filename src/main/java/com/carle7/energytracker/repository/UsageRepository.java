@@ -3,6 +3,7 @@ package com.carle7.energytracker.repository;
 import com.carle7.energytracker.model.Usage;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,4 +30,12 @@ public interface UsageRepository extends JpaRepository<Usage, Long>, UsageReposi
             GROUP BY mpan
             """, nativeQuery = true)
     List<UsageDateRangeProjection> findDateRangeByMpan();
+
+    @Query(value = """
+            SELECT interval_from AS validFrom, interval_to AS validTo
+            FROM usage
+            WHERE mpan = :mpan
+            ORDER BY interval_from
+            """, nativeQuery = true)
+    List<IntervalProjection> findDistinctIntervalsByMpan(@Param("mpan") String mpan);
 }
