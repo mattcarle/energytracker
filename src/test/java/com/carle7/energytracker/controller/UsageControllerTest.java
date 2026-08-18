@@ -109,6 +109,23 @@ class UsageControllerTest {
     }
 
     @Test
+    void byDay_totals_sumsMissingIntervalCountAcrossAllDays() {
+        UsageByDayProjection day1 = rowOf(UsageByDayProjection.class, 4, "3.0000", "0.6000");
+        when(day1.getMissingIntervalCount()).thenReturn(1L);
+        UsageByDayProjection day2 = rowOf(UsageByDayProjection.class, 4, "4.0000", "0.9000");
+        when(day2.getMissingIntervalCount()).thenReturn(3L);
+        List<UsageByDayProjection> days = List.of(day1, day2);
+        when(usageRepository.findUsageByDay(eq("12345"), any(), any(), anyList())).thenReturn(days);
+        when(usageRepository.findUsageByDayGroupByRateAndRateType(eq("12345"), anyDateTime(), anyDateTime())).thenReturn(List.of());
+
+        UsageController.UsageByDayResponse response = usageController.getUsageByDay("12345", LocalDate.parse("2026-01-01"), LocalDate.parse("2026-02-01"), null);
+
+        assertThat(response.getDays()).extracting(UsageByDayProjection::getMissingIntervalCount).containsExactly(1L, 3L);
+        assertThat(response.getTotals().getIntervalCount()).isEqualTo(8L);
+        assertThat(response.getTotals().getMissingIntervalCount()).isEqualTo(4L);
+    }
+
+    @Test
     void byDay_breakdown_isAttachedPerDayMatchedByUsageDate() {
         UsageByDayProjection day1 = rowOf(UsageByDayProjection.class, 2, "2.0000", "0.4000");
         when(day1.getUsageDate()).thenReturn(LocalDate.parse("2026-01-05"));

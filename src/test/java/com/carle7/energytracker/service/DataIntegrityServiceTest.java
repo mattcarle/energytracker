@@ -4,6 +4,7 @@ import com.carle7.energytracker.dto.DataIntegrityReport;
 import com.carle7.energytracker.dto.IntegrityCheckResult;
 import com.carle7.energytracker.dto.MpanIntegrityReport;
 import com.carle7.energytracker.model.MeterPoint;
+import com.carle7.energytracker.model.Usage;
 import com.carle7.energytracker.repository.AgreementRepository;
 import com.carle7.energytracker.repository.IntervalProjection;
 import com.carle7.energytracker.repository.MeterPointRepository;
@@ -12,15 +13,20 @@ import com.carle7.energytracker.repository.UnitRateByHalfHourRepository;
 import com.carle7.energytracker.repository.UsageRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -91,6 +97,8 @@ class DataIntegrityServiceTest {
         assertThat(usage.getGaps()).isEmpty();
         assertThat(usage.getEarliest()).isEqualTo(d.withHour(0).withMinute(30));
         assertThat(usage.getLatest()).isEqualTo(d.withHour(2).withMinute(30));
+        // No real gap found, so nothing should have been backfilled.
+        verify(usageRepository, never()).saveAll(any());
     }
 
     @Test
@@ -114,5 +122,50 @@ class DataIntegrityServiceTest {
         assertThat(usage.getGaps()).hasSize(1);
         assertThat(usage.getGaps().get(0).getFrom()).isEqualTo(beforeGap);
         assertThat(usage.getGaps().get(0).getTo()).isEqualTo(afterGap);
+    }
+
+    // Every check run should start clean, so a gap that's since been backfilled with real data
+    // doesn't keep getting re-filled with a now-stale placeholder.
+    @Test
+    void checkClearsPreviousPlaceholdersBeforeScanning() {
+        when(meterPointRepository.findAll()).thenReturn(List.of());
+
+        dataIntegrityService.checkDataIntegrity();
+
+        verify(usageRepository).deleteByMissingTrue();
+    }
+
+    @Test
+    void usageGapIsBackfilledWithZeroConsumptionPlaceholders() {
+        String mpan = "1234567890123";
+        when(meterPointRepository.findAll()).thenReturn(List.of(gasMeterPoint(mpan)));
+        when(agreementRepository.findByMeterPointIdOrderByValidFrom(anyLong())).thenReturn(List.of());
+        when(standingChargeByDayRepository.findDistinctIntervalsByMpan(mpan)).thenReturn(List.of());
+        when(unitRateByHalfHourRepository.findDistinctIntervalsByMpan(mpan)).thenReturn(List.of());
+
+        LocalDateTime beforeGap = LocalDateTime.of(2025, 6, 1, 1, 0);
+        LocalDateTime afterGap = beforeGap.plusHours(1);
+        when(usageRepository.findDistinctIntervalsByMpan(mpan)).thenReturn(List.of(
+                new TestInterval(beforeGap.minusMinutes(30), beforeGap),
+                new TestInterval(afterGap, afterGap.plusMinutes(30))
+        ));
+
+        dataIntegrityService.checkDataIntegrity();
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<Usage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(usageRepository).saveAll(captor.capture());
+        List<Usage> placeholders = captor.getValue();
+
+        assertThat(placeholders).hasSize(2);
+        assertThat(placeholders).allSatisfy(usage -> {
+            assertThat(usage.getMpan()).isEqualTo(mpan);
+            assertThat(usage.getConsumption()).isEqualByComparingTo(BigDecimal.ZERO);
+            assertThat(usage.isMissing()).isTrue();
+        });
+        assertThat(placeholders.get(0).getIntervalFrom()).isEqualTo(beforeGap);
+        assertThat(placeholders.get(0).getIntervalTo()).isEqualTo(beforeGap.plusMinutes(30));
+        assertThat(placeholders.get(1).getIntervalFrom()).isEqualTo(beforeGap.plusMinutes(30));
+        assertThat(placeholders.get(1).getIntervalTo()).isEqualTo(afterGap);
     }
 }

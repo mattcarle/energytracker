@@ -186,9 +186,34 @@ class UsageRepositoryAggregationTest {
         assertThat(results.get(1).getIntervalCount()).isEqualTo(1L);
     }
 
+    @Test
+    void byDay_countsMissingPlaceholderIntervalsSeparatelyFromIntervalCount() {
+        String mpan = "5234567890123";
+        MeterPoint meterPoint = meterPointRepository.save(new MeterPoint(mpan, false, "GAS"));
+        Agreement agreement = agreementRepository.save(new Agreement("G-1R-TEST-MISSING", LocalDateTime.parse("2026-01-01T00:00:00"), null, meterPoint.getId()));
+
+        // One real reading, one data-integrity-check placeholder (see DataIntegrityService), both
+        // on the same day.
+        seedSlot(agreement.getId(), mpan, LocalDateTime.parse("2026-01-05T10:00:00"), BigDecimal.valueOf(20), "DIRECT_DEBIT");
+        seedSlot(agreement.getId(), mpan, LocalDateTime.parse("2026-01-05T10:30:00"), BigDecimal.valueOf(20), "DIRECT_DEBIT", true);
+
+        List<UsageByDayProjection> results = usageRepository.findUsageByDay(
+                mpan, LocalDate.parse("2026-01-05"), LocalDate.parse("2026-01-06"), List.of("DIRECT_DEBIT", "NA"));
+
+        assertThat(results).hasSize(1);
+        UsageByDayProjection day = results.get(0);
+        assertThat(day.getIntervalCount()).isEqualTo(2L);
+        assertThat(day.getMissingIntervalCount()).isEqualTo(1L);
+        assertThat(day.getKwh()).isEqualByComparingTo("1.0000");
+    }
+
     private void seedSlot(Long agreementId, String mpan, LocalDateTime slot, BigDecimal valueIncVat, String paymentMethod) {
+        seedSlot(agreementId, mpan, slot, valueIncVat, paymentMethod, false);
+    }
+
+    private void seedSlot(Long agreementId, String mpan, LocalDateTime slot, BigDecimal valueIncVat, String paymentMethod, boolean missing) {
         unitRateByHalfHourRepository.save(new UnitRateByHalfHour(agreementId, valueIncVat, valueIncVat, slot, slot.plusMinutes(30), paymentMethod, "STANDARD"));
-        usageRepository.save(new Usage(slot, slot.plusMinutes(30), BigDecimal.ONE, mpan));
+        usageRepository.save(new Usage(slot, slot.plusMinutes(30), missing ? BigDecimal.ZERO : BigDecimal.ONE, mpan, missing));
         utcToLocalRepository.save(new UtcToLocal(slot, slot, "GMT"));
     }
 }

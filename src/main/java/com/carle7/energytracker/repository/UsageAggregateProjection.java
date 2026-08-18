@@ -19,6 +19,12 @@ public interface UsageAggregateProjection {
 
     Long getIntervalCount();
 
+    // How many of getIntervalCount()'s intervals are placeholder rows the data integrity check
+    // inserted for a half-hour Octopus never reported (see DataIntegrityService), rather than
+    // real readings - lets callers tell a period with genuine zero consumption apart from one
+    // that's simply missing data.
+    Long getMissingIntervalCount();
+
     BigDecimal getKwh();
 
     BigDecimal getCost();

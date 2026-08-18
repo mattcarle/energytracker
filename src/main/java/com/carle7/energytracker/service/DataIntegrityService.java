@@ -6,6 +6,7 @@ import com.carle7.energytracker.dto.IntegrityCheckResult;
 import com.carle7.energytracker.dto.MpanIntegrityReport;
 import com.carle7.energytracker.model.Agreement;
 import com.carle7.energytracker.model.MeterPoint;
+import com.carle7.energytracker.model.Usage;
 import com.carle7.energytracker.repository.AgreementRepository;
 import com.carle7.energytracker.repository.IntervalProjection;
 import com.carle7.energytracker.repository.MeterPointRepository;
@@ -15,6 +16,7 @@ import com.carle7.energytracker.repository.UsageRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -40,6 +42,11 @@ public class DataIntegrityService {
     public DataIntegrityReport checkDataIntegrity() {
         List<MpanIntegrityReport> reports = new ArrayList<>();
 
+        // Wipe last run's placeholders before scanning, so gap detection sees real readings
+        // only - any gap that's since been backfilled with real data doesn't get re-filled
+        // with a stale placeholder, and any gap that's still open gets a fresh one below.
+        usageRepository.deleteByMissingTrue();
+
         for (MeterPoint meterPoint : meterPointRepository.findAll()) {
             List<Agreement> agreements = agreementRepository.findByMeterPointIdOrderByValidFrom(meterPoint.getId());
             IntegrityCheckResult agreementsResult = checkContiguity(agreements.stream()
@@ -61,6 +68,7 @@ public class DataIntegrityService {
                             usageRepository.findDistinctIntervalsByMpan(meterPoint.getMpan()).stream()
                                     .map(Interval::from)
                                     .toList()));
+            fillMissingUsage(meterPoint.getMpan(), usageResult.getGaps());
 
             reports.add(new MpanIntegrityReport(
                     meterPoint.getMpan(),
@@ -111,6 +119,29 @@ public class DataIntegrityService {
             }
         }
         return normalized;
+    }
+
+    /**
+     * Backfills every half-hour usage gap just found with a placeholder row (consumption zero,
+     * missing = true), so charts and aggregations elsewhere in the app see a complete, contiguous
+     * series instead of silently-absent intervals. Wiped and recomputed fresh on every check (see
+     * checkDataIntegrity) rather than being a one-off fix, so a gap that gets backfilled with real
+     * data later (e.g. via Refresh Usage Data) naturally stops being recreated once it's no longer
+     * a real gap.
+     */
+    private void fillMissingUsage(String mpan, List<DataIntegrityGap> gaps) {
+        List<Usage> placeholders = new ArrayList<>();
+        for (DataIntegrityGap gap : gaps) {
+            if (gap.getFrom() == null || gap.getTo() == null) {
+                continue;
+            }
+            for (LocalDateTime slotStart = gap.getFrom(); slotStart.isBefore(gap.getTo()); slotStart = slotStart.plusMinutes(30)) {
+                placeholders.add(new Usage(slotStart, slotStart.plusMinutes(30), BigDecimal.ZERO, mpan, true));
+            }
+        }
+        if (!placeholders.isEmpty()) {
+            usageRepository.saveAll(placeholders);
+        }
     }
 
     /**

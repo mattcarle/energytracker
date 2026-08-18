@@ -35,6 +35,7 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
                    mp.is_export AS isExport,
                    %1$s AS period,
                    COUNT(*) AS intervalCount,
+                   SUM(CASE WHEN u.missing THEN 1 ELSE 0 END) AS missingIntervalCount,
                    SUM(u.consumption) AS kwh,
                    SUM(u.consumption * r.value_inc_vat / 100) AS cost,
                    SUM(u.consumption * r.value_inc_vat / 100) / NULLIF(SUM(u.consumption), 0) AS avgRate
@@ -190,7 +191,8 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
     // only ever determines the SQL expression (see Granularity); this is the one place that
     // distinction shows up on the Java side.
     private record AggregateRow<P>(String mpan, String meterType, Boolean isExport, P period,
-                                    Long intervalCount, BigDecimal kwh, BigDecimal cost, BigDecimal avgRate) {
+                                    Long intervalCount, Long missingIntervalCount, BigDecimal kwh, BigDecimal cost,
+                                    BigDecimal avgRate) {
         static <P> AggregateRow<P> from(Tuple t, Class<P> periodType) {
             return new AggregateRow<>(
                     t.get("mpan", String.class),
@@ -198,6 +200,7 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
                     t.get("isExport", Boolean.class),
                     t.get("period", periodType),
                     t.get("intervalCount", Long.class),
+                    t.get("missingIntervalCount", Long.class),
                     t.get("kwh", BigDecimal.class),
                     t.get("cost", BigDecimal.class),
                     t.get("avgRate", BigDecimal.class));
@@ -244,6 +247,11 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
         @Override
         public Long getIntervalCount() {
             return row.intervalCount();
+        }
+
+        @Override
+        public Long getMissingIntervalCount() {
+            return row.missingIntervalCount();
         }
 
         @Override
@@ -294,6 +302,11 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
         }
 
         @Override
+        public Long getMissingIntervalCount() {
+            return row.missingIntervalCount();
+        }
+
+        @Override
         public BigDecimal getKwh() {
             return row.kwh();
         }
@@ -338,6 +351,11 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
         @Override
         public Long getIntervalCount() {
             return row.intervalCount();
+        }
+
+        @Override
+        public Long getMissingIntervalCount() {
+            return row.missingIntervalCount();
         }
 
         @Override
@@ -388,6 +406,11 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
         }
 
         @Override
+        public Long getMissingIntervalCount() {
+            return row.missingIntervalCount();
+        }
+
+        @Override
         public BigDecimal getKwh() {
             return row.kwh();
         }
@@ -432,6 +455,11 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
         @Override
         public Long getIntervalCount() {
             return row.intervalCount();
+        }
+
+        @Override
+        public Long getMissingIntervalCount() {
+            return row.missingIntervalCount();
         }
 
         @Override

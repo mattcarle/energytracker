@@ -218,17 +218,19 @@ public class UsageController {
 
     private UsageTotals computeTotals(List<? extends UsageAggregateProjection> rows) {
         long intervalCount = 0;
+        long missingIntervalCount = 0;
         BigDecimal kwh = BigDecimal.ZERO;
         BigDecimal cost = BigDecimal.ZERO;
         for (UsageAggregateProjection row : rows) {
             intervalCount += row.getIntervalCount();
+            missingIntervalCount += row.getMissingIntervalCount();
             kwh = kwh.add(row.getKwh());
             cost = cost.add(row.getCost());
         }
         BigDecimal avgRate = kwh.compareTo(BigDecimal.ZERO) != 0
                 ? cost.divide(kwh, 6, RoundingMode.HALF_UP)
                 : null;
-        return new UsageTotals(intervalCount, kwh, cost, avgRate);
+        return new UsageTotals(intervalCount, missingIntervalCount, kwh, cost, avgRate);
     }
 
     public static class UsageByHalfHourResponse {
@@ -362,6 +364,11 @@ public class UsageController {
         }
 
         @Override
+        public Long getMissingIntervalCount() {
+            return delegate.getMissingIntervalCount();
+        }
+
+        @Override
         public BigDecimal getKwh() {
             return delegate.getKwh();
         }
@@ -414,6 +421,11 @@ public class UsageController {
         @Override
         public Long getIntervalCount() {
             return delegate.getIntervalCount();
+        }
+
+        @Override
+        public Long getMissingIntervalCount() {
+            return delegate.getMissingIntervalCount();
         }
 
         @Override
@@ -472,6 +484,11 @@ public class UsageController {
         }
 
         @Override
+        public Long getMissingIntervalCount() {
+            return delegate.getMissingIntervalCount();
+        }
+
+        @Override
         public BigDecimal getKwh() {
             return delegate.getKwh();
         }
@@ -524,6 +541,11 @@ public class UsageController {
         @Override
         public Long getIntervalCount() {
             return delegate.getIntervalCount();
+        }
+
+        @Override
+        public Long getMissingIntervalCount() {
+            return delegate.getMissingIntervalCount();
         }
 
         @Override
@@ -582,6 +604,11 @@ public class UsageController {
         }
 
         @Override
+        public Long getMissingIntervalCount() {
+            return delegate.getMissingIntervalCount();
+        }
+
+        @Override
         public BigDecimal getKwh() {
             return delegate.getKwh();
         }
@@ -604,12 +631,14 @@ public class UsageController {
 
     public static class UsageTotals {
         private final long intervalCount;
+        private final long missingIntervalCount;
         private final BigDecimal kwh;
         private final BigDecimal cost;
         private final BigDecimal avgRate;
 
-        public UsageTotals(long intervalCount, BigDecimal kwh, BigDecimal cost, BigDecimal avgRate) {
+        public UsageTotals(long intervalCount, long missingIntervalCount, BigDecimal kwh, BigDecimal cost, BigDecimal avgRate) {
             this.intervalCount = intervalCount;
+            this.missingIntervalCount = missingIntervalCount;
             this.kwh = kwh;
             this.cost = cost;
             this.avgRate = avgRate;
@@ -617,6 +646,10 @@ public class UsageController {
 
         public long getIntervalCount() {
             return intervalCount;
+        }
+
+        public long getMissingIntervalCount() {
+            return missingIntervalCount;
         }
 
         public BigDecimal getKwh() {

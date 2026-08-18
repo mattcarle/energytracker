@@ -32,8 +32,14 @@ CREATE TABLE IF NOT EXISTS USAGE (
     interval_from TIMESTAMP NOT NULL,
     interval_to TIMESTAMP NOT NULL,
     consumption DECIMAL(10, 4) NOT NULL,
-    mpan VARCHAR(255) NOT NULL
+    mpan VARCHAR(255) NOT NULL,
+    missing BOOLEAN NOT NULL DEFAULT FALSE
 );
+
+-- Added after USAGE already shipped - ADD COLUMN IF NOT EXISTS keeps this idempotent for
+-- databases created before "missing" existed (schema.sql runs on every startup, ddl-auto is
+-- validate-only so this is the only thing that brings an existing table's schema forward).
+ALTER TABLE USAGE ADD COLUMN IF NOT EXISTS missing BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS STANDING_CHARGE (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -129,4 +135,5 @@ CREATE INDEX IF NOT EXISTS idx_day_and_night_tariff_tariff_code ON DAY_AND_NIGHT
 CREATE INDEX IF NOT EXISTS idx_unit_rate_by_half_hour_valid_from ON UNIT_RATE_BY_HALF_HOUR(valid_from);
 CREATE INDEX IF NOT EXISTS idx_standing_charge_by_day_valid_from ON STANDING_CHARGE_BY_DAY(valid_from);
 CREATE INDEX IF NOT EXISTS idx_usage_interval_from ON USAGE(interval_from);
+CREATE INDEX IF NOT EXISTS idx_usage_missing ON USAGE(missing);
 CREATE INDEX IF NOT EXISTS idx_utc_to_local_utc_time ON UTC_TO_LOCAL(utc_time);

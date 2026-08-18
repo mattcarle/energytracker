@@ -22,6 +22,12 @@ public interface UsageRepository extends JpaRepository<Usage, Long>, UsageReposi
     @Transactional
     void deleteByMpanAndIntervalFromGreaterThanEqual(String mpan, LocalDateTime intervalFrom);
 
+    // Called at the start of every data integrity check (see DataIntegrityService), so gap
+    // detection runs against real readings only, and any placeholder rows it previously
+    // inserted for a gap that's since been backfilled with real data don't linger forever.
+    @Transactional
+    void deleteByMissingTrue();
+
     @Query(value = """
             SELECT mpan AS mpan,
                    MIN(interval_from) AS earliest,

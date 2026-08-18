@@ -28,6 +28,7 @@ export interface UsageDayAggregate {
   isExport: boolean
   usageDate: string
   intervalCount: number
+  missingIntervalCount: number
   kwh: number
   cost: number
   avgRate: number | null
@@ -37,6 +38,7 @@ export interface UsageDayAggregate {
 
 export interface UsageTotals {
   intervalCount: number
+  missingIntervalCount: number
   kwh: number
   cost: number
   avgRate: number | null
@@ -53,6 +55,7 @@ export interface UsageHalfHourAggregate {
   isExport: boolean
   usageInterval: string
   intervalCount: number
+  missingIntervalCount: number
   kwh: number
   cost: number
   avgRate: number | null
@@ -71,6 +74,7 @@ export interface UsageWeekAggregate {
   isExport: boolean
   usageWeek: string
   intervalCount: number
+  missingIntervalCount: number
   kwh: number
   cost: number
   avgRate: number | null
@@ -89,6 +93,7 @@ export interface UsageMonthAggregate {
   isExport: boolean
   usageMonth: string
   intervalCount: number
+  missingIntervalCount: number
   kwh: number
   cost: number
   avgRate: number | null
@@ -107,6 +112,7 @@ export interface UsageYearAggregate {
   isExport: boolean
   usageYear: string
   intervalCount: number
+  missingIntervalCount: number
   kwh: number
   cost: number
   avgRate: number | null

@@ -24,13 +24,25 @@ public class Usage {
     @Column(name = "mpan", nullable = false)
     private String mpan;
 
+    // True for a placeholder row the data integrity check inserted to stand in for a half-hour
+    // Octopus never reported (consumption = 0), rather than a real reading. Recreated fresh on
+    // every check run - see DataIntegrityService - so it never lingers once real data arrives.
+    @Column(name = "missing", nullable = false)
+    private boolean missing;
+
     public Usage() {}
 
     public Usage(LocalDateTime intervalFrom, LocalDateTime intervalTo, BigDecimal consumption, String mpan) {
+        this(intervalFrom, intervalTo, consumption, mpan, false);
+    }
+
+    public Usage(LocalDateTime intervalFrom, LocalDateTime intervalTo, BigDecimal consumption, String mpan,
+                 boolean missing) {
         this.intervalFrom = intervalFrom;
         this.intervalTo = intervalTo;
         this.consumption = consumption;
         this.mpan = mpan;
+        this.missing = missing;
     }
 
     public Long getId() {
@@ -71,5 +83,13 @@ public class Usage {
 
     public void setMpan(String mpan) {
         this.mpan = mpan;
+    }
+
+    public boolean isMissing() {
+        return missing;
+    }
+
+    public void setMissing(boolean missing) {
+        this.missing = missing;
     }
 }
