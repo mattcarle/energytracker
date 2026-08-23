@@ -51,6 +51,23 @@ interface UsagePeriodViewProps {
   periodSummaryLabel?: string
 }
 
+// Flags a Usage (kWh) table cell whose figure includes at least one data-integrity-check
+// placeholder interval (see MpanFigures.missingIntervalCount) by rendering it in red, explained
+// by the legend below the table - so a period reading 0 kWh because nothing was recorded reads
+// differently from one that's genuinely zero usage. The title attribute (a native tooltip, not
+// a custom-built one - nothing else in this app needs richer hover UI) covers the whole figure.
+function KwhCell({ kwh, intervalCount, missingIntervalCount }: { kwh: number; intervalCount: number; missingIntervalCount: number }): ReactNode {
+  if (missingIntervalCount <= 0) return formatKwh(kwh)
+  return (
+    <span
+      className="usage-page__missing-cell"
+      title={`Data missing for ${missingIntervalCount} out of ${intervalCount} periods`}
+    >
+      {formatKwh(kwh)}
+    </span>
+  )
+}
+
 function StatTile({ label, value }: { label: string; value: string }) {
   return (
     <div className="usage-page__stat-tile">
@@ -157,6 +174,13 @@ export default function UsagePeriodView({
     return totals
   }, [rows, meterPoints])
 
+  // missingIntervalCount propagates upward through addFigures, so any MPAN's all-rows total
+  // already reflects whether any row/period contributed a placeholder interval - checking just
+  // the totals here is equivalent to (and cheaper than) scanning every row.
+  const tableHasMissing = totalsByMpan
+    ? Array.from(totalsByMpan.values()).some((f) => f.missingIntervalCount > 0)
+    : false
+
   // Same figure as the table's TOTAL row/column - "cost" here means usage cost + standing
   // charge, matching what the chart's stacked "Cost (£)" bars actually add up to.
   const chartTotal = useMemo(() => {
@@ -181,15 +205,21 @@ export default function UsagePeriodView({
     return rows.filter((row) => row.key <= latest).length
   }
 
-  function grandTotal(byMpan: Record<string, MpanFigures>): { kwh: number; total: number } {
+  function grandTotal(
+    byMpan: Record<string, MpanFigures>,
+  ): { kwh: number; total: number; intervalCount: number; missingIntervalCount: number } {
     let kwh = 0
     let total = 0
+    let intervalCount = 0
+    let missingIntervalCount = 0
     for (const mp of includedMeterPoints) {
       const figures = byMpan[mp.mpan] ?? emptyFigures()
       kwh += figures.kwh
       total += figures.total
+      intervalCount += figures.intervalCount
+      missingIntervalCount += figures.missingIntervalCount
     }
-    return { kwh, total }
+    return { kwh, total, intervalCount, missingIntervalCount }
   }
 
   // Groups the currently-selected MPANs (the same checkbox filter the chart/table use) into
@@ -571,7 +601,8 @@ export default function UsagePeriodView({
       )}
 
       {!error && rows && hasAnyUsage && tableVisible && (
-        <div className="usage-page__table-wrap">
+        <>
+          <div className="usage-page__table-wrap">
           <table className="usage-page__table">
             <thead>
               <tr>
@@ -656,7 +687,7 @@ export default function UsagePeriodView({
                       const f = row.byMpan[mp.mpan] ?? emptyFigures()
                       return (
                         <Fragment key={mp.mpan}>
-                          <td className="usage-page__group-start">{formatKwh(f.kwh)}</td>
+                          <td className="usage-page__group-start"><KwhCell kwh={f.kwh} intervalCount={f.intervalCount} missingIntervalCount={f.missingIntervalCount} /></td>
                           {offPeakAvailableByMpan?.get(mp.mpan) && <td>{formatPercent(offPeakPct(f))}</td>}
                           <td>{formatRate(f.avgRate)}</td>
                           <td>{formatCost(f.usageCost)}</td>
@@ -665,7 +696,7 @@ export default function UsagePeriodView({
                         </Fragment>
                       )
                     })}
-                    <td className="usage-page__group-start">{formatKwh(total.kwh)}</td>
+                    <td className="usage-page__group-start"><KwhCell kwh={total.kwh} intervalCount={total.intervalCount} missingIntervalCount={total.missingIntervalCount} /></td>
                     <td>{formatCost(total.total)}</td>
                   </tr>
                 )
@@ -681,7 +712,7 @@ export default function UsagePeriodView({
                     const f = totalsByMpan.get(mp.mpan) ?? emptyFigures()
                     return (
                       <Fragment key={mp.mpan}>
-                        <td className="usage-page__group-start">{formatKwh(f.kwh)}</td>
+                        <td className="usage-page__group-start"><KwhCell kwh={f.kwh} intervalCount={f.intervalCount} missingIntervalCount={f.missingIntervalCount} /></td>
                         {/* Off Peak (%) and Avg Rate are ratios, not summable totals - the AVG
                             row below already shows them, so leave these blank rather than repeat. */}
                         {offPeakAvailableByMpan?.get(mp.mpan) && <td>&nbsp;</td>}
@@ -698,7 +729,7 @@ export default function UsagePeriodView({
                     const total = grandTotal(byMpan)
                     return (
                       <>
-                        <td className="usage-page__group-start">{formatKwh(total.kwh)}</td>
+                        <td className="usage-page__group-start"><KwhCell kwh={total.kwh} intervalCount={total.intervalCount} missingIntervalCount={total.missingIntervalCount} /></td>
                         <td>{formatCost(total.total)}</td>
                       </>
                     )
@@ -712,7 +743,7 @@ export default function UsagePeriodView({
                     const f = averageFigures(totalsByMpan.get(mp.mpan) ?? emptyFigures(), periodsWithData(mp.mpan))
                     return (
                       <Fragment key={mp.mpan}>
-                        <td className="usage-page__group-start">{formatKwh(f.kwh)}</td>
+                        <td className="usage-page__group-start"><KwhCell kwh={f.kwh} intervalCount={f.intervalCount} missingIntervalCount={f.missingIntervalCount} /></td>
                         {offPeakAvailableByMpan?.get(mp.mpan) && <td>{formatPercent(offPeakPct(f))}</td>}
                         <td>{formatRate(f.avgRate)}</td>
                         <td>{formatCost(f.usageCost)}</td>
@@ -726,14 +757,20 @@ export default function UsagePeriodView({
                     // then sum those averages, rather than summing totals over one shared divisor.
                     let kwh = 0
                     let total = 0
+                    let intervalCount = 0
+                    let missingIntervalCount = 0
                     for (const mp of includedMeterPoints) {
                       const f = averageFigures(totalsByMpan.get(mp.mpan) ?? emptyFigures(), periodsWithData(mp.mpan))
                       kwh += f.kwh
                       total += f.total
+                      intervalCount += f.intervalCount
+                      missingIntervalCount += f.missingIntervalCount
                     }
                     return (
                       <>
-                        <td className="usage-page__group-start">{formatKwh(kwh)}</td>
+                        <td className="usage-page__group-start">
+                          <KwhCell kwh={kwh} intervalCount={intervalCount} missingIntervalCount={missingIntervalCount} />
+                        </td>
                         <td>{formatCost(total)}</td>
                       </>
                     )
@@ -743,6 +780,13 @@ export default function UsagePeriodView({
             )}
           </table>
         </div>
+        {tableHasMissing && (
+          <p className="usage-page__missing-legend">
+            Periods with missing data are shown in{' '}
+            <span className="usage-page__missing-legend-highlight">GREY</span>
+          </p>
+        )}
+        </>
       )}
     </section>
   )

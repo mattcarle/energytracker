@@ -242,6 +242,25 @@
   border-radius: 8px;
 }
 
+/* A fixed mid-grey rather than var(--text) - the table's ordinary cell text already renders in
+   var(--text), so reusing it here would make missing-data cells indistinguishable from normal
+   ones. */
+.usage-page__missing-cell {
+  color: #666;
+  cursor: help;
+}
+
+.usage-page__missing-legend {
+  margin: 6px 2px 0;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.usage-page__missing-legend-highlight {
+  color: #666;
+  font-weight: 600;
+}
+
 .usage-page__table {
   width: max-content;
   min-width: 100%;

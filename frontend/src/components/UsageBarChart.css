@@ -28,3 +28,13 @@
   height: 10px;
   border-radius: 2px;
 }
+
+/* Demonstrates the cross-hatch texture itself (see UsageBarChart.tsx's per-series SVG
+   patterns) using two crossed repeating-linear-gradients, since a plain CSS background can't
+   reference an SVG <pattern> by url() - drawn in a neutral tone rather than any one series
+   color, since the real hatched bars keep their own series color and only gain this texture. */
+.usage-bar-chart__legend-swatch--missing {
+  background-image:
+    repeating-linear-gradient(45deg, var(--text) 0, var(--text) 1px, transparent 1px, transparent 4px),
+    repeating-linear-gradient(-45deg, var(--text) 0, var(--text) 1px, transparent 1px, transparent 4px);
+}

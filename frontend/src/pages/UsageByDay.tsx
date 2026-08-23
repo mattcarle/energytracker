@@ -35,6 +35,8 @@ async function fetchDayItems(mpan: string, fromDate: string, toDate: string): Pr
     avgRate: d.avgRate,
     kwhOffPeak: d.kwhOffPeak,
     costOffPeak: d.costOffPeak,
+    intervalCount: d.intervalCount,
+    missingIntervalCount: d.missingIntervalCount,
   }))
 }
 

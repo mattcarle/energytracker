@@ -36,6 +36,8 @@ async function fetchWeekItems(mpan: string, fromDate: string, toDate: string): P
     avgRate: w.avgRate,
     kwhOffPeak: w.kwhOffPeak,
     costOffPeak: w.costOffPeak,
+    intervalCount: w.intervalCount,
+    missingIntervalCount: w.missingIntervalCount,
   }))
 }
 

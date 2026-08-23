@@ -35,6 +35,8 @@ async function fetchHalfHourItems(mpan: string, fromDate: string, toDate: string
     avgRate: h.avgRate,
     kwhOffPeak: h.kwhOffPeak,
     costOffPeak: h.costOffPeak,
+    intervalCount: h.intervalCount,
+    missingIntervalCount: h.missingIntervalCount,
   }))
 }
 

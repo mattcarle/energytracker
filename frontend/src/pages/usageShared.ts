@@ -14,6 +14,14 @@ export interface MpanFigures {
   // periods.
   kwhOffPeak: number
   costOffPeak: number
+  // Total half-hour intervals this figure is derived from, and how many of them are
+  // data-integrity-check placeholders (zero consumption, standing in for a half-hour Octopus
+  // never reported) rather than real readings - see intervalCount/missingIntervalCount on the
+  // API response. missingIntervalCount > 0 drives the table's "*" marker and its tooltip's "N
+  // out of M periods" wording; both are summed (not averaged) by addFigures/averageFigures, so
+  // a total or average always reports the true underlying counts, not a diluted fraction.
+  intervalCount: number
+  missingIntervalCount: number
 }
 
 // One row of a usage-by-X table/chart, generic across granularities - `key` is a
@@ -26,7 +34,17 @@ export interface PeriodRow {
 }
 
 export function emptyFigures(): MpanFigures {
-  return { kwh: 0, avgRate: null, usageCost: 0, stdChg: 0, total: 0, kwhOffPeak: 0, costOffPeak: 0 }
+  return {
+    kwh: 0,
+    avgRate: null,
+    usageCost: 0,
+    stdChg: 0,
+    total: 0,
+    kwhOffPeak: 0,
+    costOffPeak: 0,
+    intervalCount: 0,
+    missingIntervalCount: 0,
+  }
 }
 
 export function addFigures(a: MpanFigures, b: MpanFigures): MpanFigures {
@@ -43,6 +61,8 @@ export function addFigures(a: MpanFigures, b: MpanFigures): MpanFigures {
     avgRate: kwh !== 0 ? usageCost / kwh : null,
     kwhOffPeak,
     costOffPeak,
+    intervalCount: a.intervalCount + b.intervalCount,
+    missingIntervalCount: a.missingIntervalCount + b.missingIntervalCount,
   }
 }
 
@@ -59,6 +79,10 @@ export function averageFigures(f: MpanFigures, count: number): MpanFigures {
     total: f.total / count,
     kwhOffPeak: f.kwhOffPeak / count,
     costOffPeak: f.costOffPeak / count,
+    // Not divided - these are counts of underlying half-hour periods, not amounts, so the
+    // AVG row's tooltip should still report the real totals behind it, not a fractional count.
+    intervalCount: f.intervalCount,
+    missingIntervalCount: f.missingIntervalCount,
   }
 }
 
@@ -206,6 +230,8 @@ export interface RawPeriodItem {
   avgRate: number | null
   kwhOffPeak: number | null
   costOffPeak: number | null
+  intervalCount: number
+  missingIntervalCount: number
 }
 
 export interface UsagePeriodConfig {
@@ -310,6 +336,8 @@ export function useUsagePeriodData(meterPoints: MeterPoint[] | null, config: Usa
               total: usageCost + stdChg,
               kwhOffPeak: item.kwhOffPeak !== null ? item.kwhOffPeak * sign : 0,
               costOffPeak: item.costOffPeak !== null ? item.costOffPeak * sign : 0,
+              intervalCount: item.intervalCount,
+              missingIntervalCount: item.missingIntervalCount,
             }
           }
 
@@ -318,7 +346,7 @@ export function useUsagePeriodData(meterPoints: MeterPoint[] | null, config: Usa
           for (const [key, amount] of stdChgByKey) {
             const row = rowFor(key)
             if (row.byMpan[mpan]) continue
-            row.byMpan[mpan] = { kwh: 0, avgRate: null, usageCost: 0, stdChg: amount, total: amount, kwhOffPeak: 0, costOffPeak: 0 }
+            row.byMpan[mpan] = { kwh: 0, avgRate: null, usageCost: 0, stdChg: amount, total: amount, kwhOffPeak: 0, costOffPeak: 0, intervalCount: 0, missingIntervalCount: 0 }
           }
 
           // Standing charges are typically known in advance, but usage data can lag behind

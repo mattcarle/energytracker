@@ -27,6 +27,8 @@ async function fetchYearItems(mpan: string, fromDate: string, toDate: string): P
     avgRate: y.avgRate,
     kwhOffPeak: y.kwhOffPeak,
     costOffPeak: y.costOffPeak,
+    intervalCount: y.intervalCount,
+    missingIntervalCount: y.missingIntervalCount,
   }))
 }
 
