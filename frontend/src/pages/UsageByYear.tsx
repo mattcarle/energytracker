@@ -1,73 +1,114 @@
-import { useMemo } from 'react'
-import { getUsageByYear } from '../api/client'
+import { useMemo, useState } from 'react'
+import { getUsageByMonth } from '../api/client'
 import UsagePeriodView, { type PeriodColumn } from './UsagePeriodView'
-import { pad2, useMeterPoints, useUsagePeriodData, type RawPeriodItem, type UsagePeriodConfig } from './usageShared'
+import {
+  MONTH_NAMES,
+  MONTH_NAMES_SHORT,
+  pad2,
+  useMeterPoints,
+  useUsagePeriodData,
+  yearOptions,
+  type RawPeriodItem,
+  type UsagePeriodConfig,
+} from './usageShared'
 
-// No period selection for this view - fetch across a wide-enough range to catch all historical
-// data and let the backend's grouping decide which years actually appear.
-const FROM_DATE = '2000-01-01'
-
-function tomorrowIso(): string {
-  const now = new Date()
-  now.setDate(now.getDate() + 1)
-  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
+function monthKeysForYear(year: number): string[] {
+  return Array.from({ length: 12 }, (_, i) => `${year}-${pad2(i + 1)}-01`)
 }
 
-function bucketKeyForYear(dateStr: string): string[] {
-  return [`${dateStr.slice(0, 4)}-01-01`]
+function monthLabel(key: string): string {
+  const [year, month] = key.split('-')
+  return `${MONTH_NAMES[Number(month) - 1].slice(0, 3)} ${year}`
 }
 
-async function fetchYearItems(mpan: string, fromDate: string, toDate: string): Promise<RawPeriodItem[]> {
-  const response = await getUsageByYear(mpan, fromDate, toDate)
-  return response.years.map((y) => ({
-    key: y.usageYear,
-    isExport: y.isExport,
-    kwh: y.kwh,
-    cost: y.cost,
-    avgRate: y.avgRate,
-    kwhOffPeak: y.kwhOffPeak,
-    costOffPeak: y.costOffPeak,
-    intervalCount: y.intervalCount,
-    missingIntervalCount: y.missingIntervalCount,
+// The chart's x-axis has one tick per month within a single year already named in the page's
+// own heading/controls, so repeating that year on every tick (see monthLabel, used by the
+// table) would just be cramped and redundant there.
+function monthChartLabel(key: string): string {
+  const [, month] = key.split('-')
+  return MONTH_NAMES_SHORT[Number(month) - 1]
+}
+
+function bucketKeyForMonth(dateStr: string): string[] {
+  const [year, month] = dateStr.split('-')
+  return [`${year}-${month}-01`]
+}
+
+async function fetchMonthItems(mpan: string, fromDate: string, toDate: string): Promise<RawPeriodItem[]> {
+  const response = await getUsageByMonth(mpan, fromDate, toDate)
+  return response.months.map((m) => ({
+    key: m.usageMonth,
+    isExport: m.isExport,
+    kwh: m.kwh,
+    cost: m.cost,
+    avgRate: m.avgRate,
+    kwhOffPeak: m.kwhOffPeak,
+    costOffPeak: m.costOffPeak,
+    intervalCount: m.intervalCount,
+    missingIntervalCount: m.missingIntervalCount,
   }))
 }
 
-const PERIOD_COLUMNS: PeriodColumn[] = [{ header: 'Year', render: (row) => row.key.slice(0, 4) }]
+const PERIOD_COLUMNS: PeriodColumn[] = [{ header: 'Month', render: (row) => row.label }]
 
 export default function UsageByYear() {
+  const [year, setYear] = useState(new Date().getFullYear())
   const { meterPoints, error: meterPointsError } = useMeterPoints()
 
-  // Unlike the other views, expectedKeys is left empty: "all years with no data" isn't a
-  // bounded, meaningful list the way "all days in this month" is, so rows come purely from
-  // whatever years actually have usage or a known standing charge.
   const config = useMemo<UsagePeriodConfig>(
     () => ({
-      fromDate: FROM_DATE,
-      toDate: tomorrowIso(),
-      expectedKeys: [],
-      labelForKey: (key) => key.slice(0, 4),
-      bucketKeyForStandingChargeDate: bucketKeyForYear,
-      fetchUsageItems: fetchYearItems,
+      fromDate: `${year}-01-01`,
+      toDate: `${year + 1}-01-01`,
+      expectedKeys: monthKeysForYear(year),
+      labelForKey: monthLabel,
+      chartLabelForKey: monthChartLabel,
+      bucketKeyForStandingChargeDate: bucketKeyForMonth,
+      fetchUsageItems: fetchMonthItems,
     }),
-    [],
+    [year],
   )
 
   const { rows, offPeakAvailableByMpan, latestPeriodKeyByMpan, stdChgDaysByMpan, error } = useUsagePeriodData(meterPoints, config)
 
+  const controls = (
+    <>
+      <label>
+        Year
+        <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
+          {yearOptions(year).map((y) => (
+            <option key={y} value={y}>
+              {y}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="usage-page__month-nav">
+        <button type="button" onClick={() => setYear((y) => y - 1)} aria-label="Previous year">
+          &lt;
+        </button>
+        <button type="button" onClick={() => setYear((y) => y + 1)} aria-label="Next year">
+          &gt;
+        </button>
+      </div>
+    </>
+  )
+
   return (
     <UsagePeriodView
-      title="Usage by year"
+      title="Usage by Year"
       periodColumns={PERIOD_COLUMNS}
-      averageRowLabel="AVG / YEAR"
+      averageRowLabel="AVG / MONTH"
+      controls={controls}
       rows={rows}
       meterPoints={meterPoints}
       offPeakAvailableByMpan={offPeakAvailableByMpan}
       latestPeriodKeyByMpan={latestPeriodKeyByMpan}
       stdChgDaysByMpan={stdChgDaysByMpan}
       error={meterPointsError ?? error}
-      noDataMessage="No usage data available."
+      noDataMessage={`No usage data for ${year}.`}
       enableInsights
-      insightsPeriodLabel="Year"
+      insightsPeriodLabel="Month"
+      periodSummaryLabel={`${year}`}
     />
   )
 }

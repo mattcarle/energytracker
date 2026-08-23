@@ -1,83 +1,91 @@
 import { useMemo, useState } from 'react'
-import { getUsageByWeek } from '../api/client'
+import { getUsageByDay } from '../api/client'
 import UsagePeriodView, { type PeriodColumn } from './UsagePeriodView'
 import {
   addDays,
+  dayOfWeek,
+  formatDayLabel,
   formatDayLabelWithYear,
   isoWeekMonday,
+  pad2,
   useMeterPoints,
   useUsagePeriodData,
-  yearOptions,
   type RawPeriodItem,
   type UsagePeriodConfig,
 } from './usageShared'
 
-// All ISO weeks (Monday start) whose Monday falls within the given calendar year - the first
-// week can start in late December of the previous year (matching H2's DATE_TRUNC('WEEK', ...)
-// on the backend), so the row set lines up with whatever the backend actually returns.
-function weekKeysForYear(year: number): string[] {
-  const keys: string[] = []
-  let current = isoWeekMonday(`${year}-01-01`)
-  const boundary = `${year}-12-31`
-  while (current <= boundary) {
-    keys.push(current)
-    current = addDays(current, 7)
-  }
-  return keys
+function weekKeys(weekStart: string): string[] {
+  return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
 }
 
-async function fetchWeekItems(mpan: string, fromDate: string, toDate: string): Promise<RawPeriodItem[]> {
-  const response = await getUsageByWeek(mpan, fromDate, toDate)
-  return response.weeks.map((w) => ({
-    key: w.usageWeek,
-    isExport: w.isExport,
-    kwh: w.kwh,
-    cost: w.cost,
-    avgRate: w.avgRate,
-    kwhOffPeak: w.kwhOffPeak,
-    costOffPeak: w.costOffPeak,
-    intervalCount: w.intervalCount,
-    missingIntervalCount: w.missingIntervalCount,
+async function fetchDayItems(mpan: string, fromDate: string, toDate: string): Promise<RawPeriodItem[]> {
+  const response = await getUsageByDay(mpan, fromDate, toDate)
+  return response.days.map((d) => ({
+    key: d.usageDate,
+    isExport: d.isExport,
+    kwh: d.kwh,
+    cost: d.cost,
+    avgRate: d.avgRate,
+    kwhOffPeak: d.kwhOffPeak,
+    costOffPeak: d.costOffPeak,
+    intervalCount: d.intervalCount,
+    missingIntervalCount: d.missingIntervalCount,
   }))
 }
 
-const PERIOD_COLUMNS: PeriodColumn[] = [{ header: 'Week starting', render: (row) => row.label }]
+const PERIOD_COLUMNS: PeriodColumn[] = [
+  { header: 'Day', render: (row) => dayOfWeek(row.key) },
+  { header: 'Date', render: (row) => row.label },
+]
+
+function todayIso(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
+}
 
 export default function UsageByWeek() {
-  const [year, setYear] = useState(new Date().getFullYear())
+  const [weekStart, setWeekStart] = useState(() => isoWeekMonday(todayIso()))
   const { meterPoints, error: meterPointsError } = useMeterPoints()
 
   const config = useMemo<UsagePeriodConfig>(
     () => ({
-      fromDate: `${year}-01-01`,
-      toDate: `${year + 1}-01-01`,
-      expectedKeys: weekKeysForYear(year),
-      labelForKey: formatDayLabelWithYear,
-      bucketKeyForStandingChargeDate: (dateStr) => [isoWeekMonday(dateStr)],
-      fetchUsageItems: fetchWeekItems,
+      fromDate: weekStart,
+      toDate: addDays(weekStart, 7),
+      expectedKeys: weekKeys(weekStart),
+      labelForKey: formatDayLabel,
+      // The table already has a separate "Day" column for this - the chart's x-axis has no such
+      // column, so it shows the weekday itself rather than the date (see UsageByYear for the
+      // same idea: the table stays detailed, the chart's one line per tick stays short).
+      chartLabelForKey: dayOfWeek,
+      bucketKeyForStandingChargeDate: (dateStr) => [dateStr],
+      fetchUsageItems: fetchDayItems,
     }),
-    [year],
+    [weekStart],
   )
 
   const { rows, offPeakAvailableByMpan, latestPeriodKeyByMpan, stdChgDaysByMpan, error } = useUsagePeriodData(meterPoints, config)
 
+  function goToPreviousWeek() {
+    setWeekStart((d) => addDays(d, -7))
+  }
+
+  function goToNextWeek() {
+    setWeekStart((d) => addDays(d, 7))
+  }
+
+  const weekEnd = addDays(weekStart, 6)
+
   const controls = (
     <>
       <label>
-        Year
-        <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
-          {yearOptions(year).map((y) => (
-            <option key={y} value={y}>
-              {y}
-            </option>
-          ))}
-        </select>
+        Week starting
+        <input type="date" value={weekStart} onChange={(e) => setWeekStart(isoWeekMonday(e.target.value))} />
       </label>
       <div className="usage-page__month-nav">
-        <button type="button" onClick={() => setYear((y) => y - 1)} aria-label="Previous year">
+        <button type="button" onClick={goToPreviousWeek} aria-label="Previous week">
           &lt;
         </button>
-        <button type="button" onClick={() => setYear((y) => y + 1)} aria-label="Next year">
+        <button type="button" onClick={goToNextWeek} aria-label="Next week">
           &gt;
         </button>
       </div>
@@ -86,9 +94,9 @@ export default function UsageByWeek() {
 
   return (
     <UsagePeriodView
-      title="Usage by week"
+      title="Usage by Week"
       periodColumns={PERIOD_COLUMNS}
-      averageRowLabel="AVG / WEEK"
+      averageRowLabel="AVG / DAY"
       controls={controls}
       rows={rows}
       meterPoints={meterPoints}
@@ -96,10 +104,10 @@ export default function UsageByWeek() {
       latestPeriodKeyByMpan={latestPeriodKeyByMpan}
       stdChgDaysByMpan={stdChgDaysByMpan}
       error={meterPointsError ?? error}
-      noDataMessage={`No usage data for ${year}.`}
+      noDataMessage={`No usage data for the week of ${formatDayLabelWithYear(weekStart)}.`}
       enableInsights
-      insightsPeriodLabel="Week"
-      periodSummaryLabel={`${year}`}
+      insightsPeriodLabel="Day"
+      periodSummaryLabel={`${formatDayLabel(weekStart)} – ${formatDayLabelWithYear(weekEnd)}`}
     />
   )
 }

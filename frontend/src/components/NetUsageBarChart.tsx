@@ -60,7 +60,7 @@ export default function NetUsageBarChart({ rows, meterPoints, metric }: NetUsage
         if (figures.missingIntervalCount !== figures.intervalCount) fullyMissing = false
       }
     }
-    return { dayLabel: row.label, value, missing, fullyMissing: hadAnyIntervals && fullyMissing && missing }
+    return { dayLabel: row.chartLabel, value, missing, fullyMissing: hadAnyIntervals && fullyMissing && missing }
   })
 
   // Thin out x-axis labels for a full month so they don't overlap; every day is still a

@@ -26,10 +26,15 @@ export interface MpanFigures {
 
 // One row of a usage-by-X table/chart, generic across granularities - `key` is a
 // chronologically-sortable string (e.g. "2026-08-05", "14:30") used for ordering and for the
-// "beyond the latest period we have data for" cutoff; `label` is what's actually displayed.
+// "beyond the latest period we have data for" cutoff; `label` is what's actually displayed in
+// the table. `chartLabel` is what's shown on the chart's x-axis - usually the same as `label`,
+// but a page can shorten it via UsagePeriodConfig.chartLabelForKey where the table has room to
+// spell things out (e.g. "Jan 2026") but repeating that on every tick would be cramped/redundant
+// (e.g. the year page, where the year is already shown in the page's own heading).
 export interface PeriodRow {
   key: string
   label: string
+  chartLabel: string
   byMpan: Record<string, MpanFigures>
 }
 
@@ -241,6 +246,9 @@ export interface UsagePeriodConfig {
   // open-ended views (like "by year") where only periods with actual data should appear.
   expectedKeys: string[]
   labelForKey: (key: string) => string
+  // Overrides the chart's x-axis tick text - defaults to labelForKey when omitted. See
+  // PeriodRow.chartLabel.
+  chartLabelForKey?: (key: string) => string
   // Maps a standing-charge day (the daily standing-charge endpoint is the only granularity that
   // charge is recorded at) onto the period key(s) it should be attributed to - the day's amount
   // is split evenly across however many keys are returned (usually just one, but e.g. the
@@ -291,14 +299,19 @@ export function useUsagePeriodData(meterPoints: MeterPoint[] | null, config: Usa
       .then((perMpanResults) => {
         if (cancelled) return
 
+        const chartLabelForKey = config.chartLabelForKey ?? config.labelForKey
+        function buildRow(key: string): PeriodRow {
+          return { key, label: config.labelForKey(key), chartLabel: chartLabelForKey(key), byMpan: {} }
+        }
+
         const rowByKey = new Map<string, PeriodRow>()
         for (const key of config.expectedKeys) {
-          rowByKey.set(key, { key, label: config.labelForKey(key), byMpan: {} })
+          rowByKey.set(key, buildRow(key))
         }
         function rowFor(key: string): PeriodRow {
           let row = rowByKey.get(key)
           if (!row) {
-            row = { key, label: config.labelForKey(key), byMpan: {} }
+            row = buildRow(key)
             rowByKey.set(key, row)
           }
           return row

@@ -130,7 +130,7 @@ function formatValue(value: number, metric: ChartMetric): string {
 export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvailableByMpan }: UsageBarChartProps) {
   const isMobile = useIsMobile()
   const data = rows.map((row) => {
-    const point: Record<string, number | string | boolean> = { dayLabel: row.label }
+    const point: Record<string, number | string | boolean> = { dayLabel: row.chartLabel }
     for (const mp of meterPoints) {
       const figures = row.byMpan[mp.mpan]
       const hasSplit = offPeakAvailableByMpan?.get(mp.mpan) ?? false

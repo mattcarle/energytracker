@@ -10,25 +10,21 @@ import ManageData from './pages/ManageData'
 import ManageUsers from './pages/ManageUsers'
 import Setup from './pages/Setup'
 import UsageByDay from './pages/UsageByDay'
-import UsageByHalfHour from './pages/UsageByHalfHour'
 import UsageByMonth from './pages/UsageByMonth'
 import UsageByWeek from './pages/UsageByWeek'
 import UsageByYear from './pages/UsageByYear'
 import './App.css'
 
-type UsagePage = 'usage-half-hour' | 'usage-day' | 'usage-week' | 'usage-month' | 'usage-year'
+type UsagePage = 'usage-day' | 'usage-week' | 'usage-month' | 'usage-year'
 type AdminPage = 'manage-data' | 'manage-users' | 'change-password-settings'
 type Page = UsagePage | AdminPage
 type AuthPhase = 'loading' | 'setup' | 'login' | 'change-password' | 'authenticated'
 
-// mobileLabel drops the "Usage by " prefix the dropdown label carries, since the mobile tab
-// row has five of these side by side and needs to stay scannable at phone widths.
-const USAGE_PAGES: { page: UsagePage; label: string; mobileLabel: string }[] = [
-  { page: 'usage-half-hour', label: 'Usage by half-hour', mobileLabel: 'Half-hour' },
-  { page: 'usage-day', label: 'Usage by day', mobileLabel: 'Day' },
-  { page: 'usage-week', label: 'Usage by week', mobileLabel: 'Week' },
-  { page: 'usage-month', label: 'Usage by month', mobileLabel: 'Month' },
-  { page: 'usage-year', label: 'Usage by year', mobileLabel: 'Year' },
+const USAGE_PAGES: { page: UsagePage; label: string }[] = [
+  { page: 'usage-day', label: 'Day' },
+  { page: 'usage-week', label: 'Week' },
+  { page: 'usage-month', label: 'Month' },
+  { page: 'usage-year', label: 'Year' },
 ]
 
 function App() {
@@ -276,19 +272,18 @@ function App() {
       </nav>
       {isMobile && !needsDayAndNightSetup && (
         <div className="app-nav__mobile-tabs">
-          {USAGE_PAGES.map(({ page: usagePage, mobileLabel }) => (
+          {USAGE_PAGES.map(({ page: usagePage, label }) => (
             <button
               key={usagePage}
               type="button"
               className={page === usagePage ? 'active' : ''}
               onClick={() => selectUsagePage(usagePage)}
             >
-              {mobileLabel}
+              {label}
             </button>
           ))}
         </div>
       )}
-      {page === 'usage-half-hour' && <UsageByHalfHour />}
       {page === 'usage-day' && <UsageByDay />}
       {page === 'usage-week' && <UsageByWeek />}
       {page === 'usage-month' && <UsageByMonth />}

@@ -11,8 +11,6 @@ import type {
   UsageByDayResponse,
   UsageByHalfHourResponse,
   UsageByMonthResponse,
-  UsageByWeekResponse,
-  UsageByYearResponse,
   UsageDateRange,
   UsageLoadResult,
   UserRole,
@@ -87,19 +85,9 @@ export function getUsageByDay(mpan: string, fromDate: string, toDate: string): P
   return getJson(`/api/usage/by-day?${params.toString()}`)
 }
 
-export function getUsageByWeek(mpan: string, fromDate: string, toDate: string): Promise<UsageByWeekResponse> {
-  const params = new URLSearchParams({ mpan, fromDate, toDate })
-  return getJson(`/api/usage/by-week?${params.toString()}`)
-}
-
 export function getUsageByMonth(mpan: string, fromDate: string, toDate: string): Promise<UsageByMonthResponse> {
   const params = new URLSearchParams({ mpan, fromDate, toDate })
   return getJson(`/api/usage/by-month?${params.toString()}`)
-}
-
-export function getUsageByYear(mpan: string, fromDate: string, toDate: string): Promise<UsageByYearResponse> {
-  const params = new URLSearchParams({ mpan, fromDate, toDate })
-  return getJson(`/api/usage/by-year?${params.toString()}`)
 }
 
 export function getUsageDateRanges(): Promise<UsageDateRange[]> {

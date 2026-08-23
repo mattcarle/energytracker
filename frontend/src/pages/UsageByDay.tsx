@@ -1,120 +1,135 @@
-import { useMemo, useState } from 'react'
-import { getUsageByDay } from '../api/client'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { getUsageByHalfHour } from '../api/client'
 import UsagePeriodView, { type PeriodColumn } from './UsagePeriodView'
 import {
-  MONTH_NAMES,
-  MONTH_NAMES_SHORT,
-  dayOfWeek,
+  addDays,
+  formatFullDate,
   pad2,
   useMeterPoints,
   useUsagePeriodData,
-  yearOptions,
   type RawPeriodItem,
   type UsagePeriodConfig,
 } from './usageShared'
 
-function firstOfMonth(year: number, month: number): string {
-  return `${year}-${pad2(month)}-01`
+function halfHourKeys(): string[] {
+  const keys: string[] = []
+  for (let h = 0; h < 24; h++) {
+    for (const m of [0, 30]) {
+      keys.push(`${pad2(h)}:${pad2(m)}`)
+    }
+  }
+  return keys
 }
 
-function firstOfNextMonth(year: number, month: number): string {
-  return month === 12 ? `${year + 1}-01-01` : `${year}-${pad2(month + 1)}-01`
-}
+const EXPECTED_KEYS = halfHourKeys()
 
-function daysInMonth(year: number, month: number): number {
-  return new Date(year, month, 0).getDate()
-}
-
-async function fetchDayItems(mpan: string, fromDate: string, toDate: string): Promise<RawPeriodItem[]> {
-  const response = await getUsageByDay(mpan, fromDate, toDate)
-  return response.days.map((d) => ({
-    key: d.usageDate,
-    isExport: d.isExport,
-    kwh: d.kwh,
-    cost: d.cost,
-    avgRate: d.avgRate,
-    kwhOffPeak: d.kwhOffPeak,
-    costOffPeak: d.costOffPeak,
-    intervalCount: d.intervalCount,
-    missingIntervalCount: d.missingIntervalCount,
+async function fetchHalfHourItems(mpan: string, fromDate: string, toDate: string): Promise<RawPeriodItem[]> {
+  const response = await getUsageByHalfHour(mpan, fromDate, toDate)
+  return response.halfHours.map((h) => ({
+    // usageInterval is a LocalDateTime like "2026-08-10T14:30:00" - the HH:mm portion is the
+    // period key since only one day is ever in range for this view.
+    key: h.usageInterval.slice(11, 16),
+    isExport: h.isExport,
+    kwh: h.kwh,
+    cost: h.cost,
+    avgRate: h.avgRate,
+    kwhOffPeak: h.kwhOffPeak,
+    costOffPeak: h.costOffPeak,
+    intervalCount: h.intervalCount,
+    missingIntervalCount: h.missingIntervalCount,
   }))
 }
 
-const PERIOD_COLUMNS: PeriodColumn[] = [
-  { header: 'Day', render: (row) => dayOfWeek(row.key) },
-  { header: 'Date', render: (row) => row.label },
-]
+const PERIOD_COLUMNS: PeriodColumn[] = [{ header: 'Time', render: (row) => row.label }]
+
+function todayIso(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
+}
+
+function hasAnyUsage(rows: { byMpan: Record<string, { kwh: number; total: number }> }[]): boolean {
+  return rows.some((row) => Object.values(row.byMpan).some((f) => f.kwh !== 0 || f.total !== 0))
+}
+
+// Different meters on the same account can lag by a different number of days, so there's no
+// single "latest" timestamp to trust - instead this walks backward from today one day at a time
+// until it lands on a day that actually has usage, which self-corrects regardless of which
+// meter is behind. Capped so an account with no data at all doesn't walk back forever.
+const MAX_AUTO_STEPS = 60
 
 export default function UsageByDay() {
-  const now = new Date()
-  const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
-
+  const [date, setDate] = useState(todayIso())
+  const [dateChangedByUser, setDateChangedByUser] = useState(false)
+  const [autoStepping, setAutoStepping] = useState(true)
+  const autoStepCount = useRef(0)
   const { meterPoints, error: meterPointsError } = useMeterPoints()
 
-  const config = useMemo<UsagePeriodConfig>(() => {
-    const total = daysInMonth(year, month)
-    const expectedKeys = Array.from({ length: total }, (_, i) => `${year}-${pad2(month)}-${pad2(i + 1)}`)
-    return {
-      fromDate: firstOfMonth(year, month),
-      toDate: firstOfNextMonth(year, month),
-      expectedKeys,
-      labelForKey: (key) => {
-        const [, monthPart, dayPart] = key.split('-')
-        return `${dayPart}-${MONTH_NAMES[Number(monthPart) - 1].slice(0, 3)}`
-      },
-      bucketKeyForStandingChargeDate: (dateStr) => [dateStr],
-      fetchUsageItems: fetchDayItems,
-    }
-  }, [year, month])
+  const config = useMemo<UsagePeriodConfig>(
+    () => ({
+      fromDate: date,
+      toDate: addDays(date, 1),
+      expectedKeys: EXPECTED_KEYS,
+      labelForKey: (key) => key,
+      // Only one day is ever in range for this view, so its standing charge is split evenly
+      // across all of that day's half-hour periods rather than attached to a single one.
+      bucketKeyForStandingChargeDate: () => EXPECTED_KEYS,
+      fetchUsageItems: fetchHalfHourItems,
+    }),
+    [date],
+  )
 
   const { rows, offPeakAvailableByMpan, latestPeriodKeyByMpan, stdChgDaysByMpan, error } = useUsagePeriodData(meterPoints, config)
 
-  function goToPreviousMonth() {
-    if (month === 1) {
-      setYear((y) => y - 1)
-      setMonth(12)
-    } else {
-      setMonth((m) => m - 1)
+  useEffect(() => {
+    if (dateChangedByUser) {
+      setAutoStepping(false)
+      return
     }
+    if (!rows) return
+    if (hasAnyUsage(rows)) {
+      setAutoStepping(false)
+      return
+    }
+    if (autoStepCount.current >= MAX_AUTO_STEPS) {
+      setAutoStepping(false)
+      return
+    }
+    autoStepCount.current += 1
+    setDate((d) => addDays(d, -1))
+  }, [rows, dateChangedByUser])
+
+  // While still auto-stepping backward looking for a day with data, show "loading" rather than
+  // a series of "no usage data for X" flashes for each empty day it passes through.
+  const displayRows = autoStepping && !dateChangedByUser ? null : rows
+
+  function goToPreviousDay() {
+    setDateChangedByUser(true)
+    setDate((d) => addDays(d, -1))
   }
 
-  function goToNextMonth() {
-    if (month === 12) {
-      setYear((y) => y + 1)
-      setMonth(1)
-    } else {
-      setMonth((m) => m + 1)
-    }
+  function goToNextDay() {
+    setDateChangedByUser(true)
+    setDate((d) => addDays(d, 1))
   }
 
   const controls = (
     <>
       <label>
-        Month
-        <select value={month} onChange={(e) => setMonth(Number(e.target.value))}>
-          {MONTH_NAMES_SHORT.map((name, index) => (
-            <option key={name} value={index + 1}>
-              {name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Year
-        <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
-          {yearOptions(year).map((y) => (
-            <option key={y} value={y}>
-              {y}
-            </option>
-          ))}
-        </select>
+        Date
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => {
+            setDateChangedByUser(true)
+            setDate(e.target.value)
+          }}
+        />
       </label>
       <div className="usage-page__month-nav">
-        <button type="button" onClick={goToPreviousMonth} aria-label="Previous month">
+        <button type="button" onClick={goToPreviousDay} aria-label="Previous day">
           &lt;
         </button>
-        <button type="button" onClick={goToNextMonth} aria-label="Next month">
+        <button type="button" onClick={goToNextDay} aria-label="Next day">
           &gt;
         </button>
       </div>
@@ -123,20 +138,20 @@ export default function UsageByDay() {
 
   return (
     <UsagePeriodView
-      title="Usage by day"
+      title="Usage by Day"
       periodColumns={PERIOD_COLUMNS}
-      averageRowLabel="AVG / DAY"
+      averageRowLabel="AVG / HALF-HR"
       controls={controls}
-      rows={rows}
+      rows={displayRows}
       meterPoints={meterPoints}
       offPeakAvailableByMpan={offPeakAvailableByMpan}
       latestPeriodKeyByMpan={latestPeriodKeyByMpan}
       stdChgDaysByMpan={stdChgDaysByMpan}
       error={meterPointsError ?? error}
-      noDataMessage={`No usage data for ${MONTH_NAMES[month - 1]} ${year}.`}
+      noDataMessage={`No usage data for ${date}.`}
       enableInsights
-      insightsPeriodLabel="Day"
-      periodSummaryLabel={`${MONTH_NAMES_SHORT[month - 1]} ${year}`}
+      insightsPeriodLabel="Half Hour"
+      periodSummaryLabel={formatFullDate(date)}
     />
   )
 }
