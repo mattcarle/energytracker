@@ -3,6 +3,7 @@ package com.carle7.energytracker.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -19,11 +20,19 @@ public class DataLoadScheduler {
     @Autowired
     private OctopusCredentialsService octopusCredentialsService;
 
+    @Value("${app.startup-usage-load.enabled:true}")
+    private boolean startupUsageLoadEnabled;
+
     // First-run setup already performs the initial account+usage load itself (see
     // AuthController#setup), so this is only reached on subsequent restarts, where it catches up
-    // on whatever usage has landed since the app last ran.
+    // on whatever usage has landed since the app last ran. Dev disables this (see
+    // application-dev.properties) so restarts aren't held up by an API round-trip.
     @EventListener(ApplicationReadyEvent.class)
     public void loadLatestUsageOnStartup() {
+        if (!startupUsageLoadEnabled) {
+            logger.info("Skipping startup usage load (app.startup-usage-load.enabled=false)");
+            return;
+        }
         if (!octopusCredentialsService.hasCredentials()) {
             return;
         }
