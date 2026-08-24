@@ -1,6 +1,7 @@
 package com.carle7.energytracker.controller;
 
 import com.carle7.energytracker.dto.ChangePasswordRequest;
+import com.carle7.energytracker.dto.DataIntegrityReport;
 import com.carle7.energytracker.dto.ErrorResponse;
 import com.carle7.energytracker.dto.LoginRequest;
 import com.carle7.energytracker.dto.SetupRequest;
@@ -8,6 +9,7 @@ import com.carle7.energytracker.dto.SetupResponse;
 import com.carle7.energytracker.dto.SetupStatusResponse;
 import com.carle7.energytracker.dto.UserResponse;
 import com.carle7.energytracker.security.UserPrincipal;
+import com.carle7.energytracker.service.DataIntegrityService;
 import com.carle7.energytracker.service.OctopusService;
 import com.carle7.energytracker.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -35,14 +37,17 @@ public class AuthController {
 
     private final UserService userService;
     private final OctopusService octopusService;
+    private final DataIntegrityService dataIntegrityService;
     private final AuthenticationManager authenticationManager;
     private final SecurityContextRepository securityContextRepository;
 
     public AuthController(UserService userService, OctopusService octopusService,
+                           DataIntegrityService dataIntegrityService,
                            AuthenticationManager authenticationManager,
                            SecurityContextRepository securityContextRepository) {
         this.userService = userService;
         this.octopusService = octopusService;
+        this.dataIntegrityService = dataIntegrityService;
         this.authenticationManager = authenticationManager;
         this.securityContextRepository = securityContextRepository;
     }
@@ -64,8 +69,9 @@ public class AuthController {
 
         OctopusService.AccountLoadResult accountLoad = octopusService.loadAccountData(false);
         OctopusService.UsageLoadResult usageLoad = octopusService.loadUsageData(false);
+        DataIntegrityReport integrityReport = dataIntegrityService.checkDataIntegrity();
 
-        return ResponseEntity.ok(new SetupResponse(loginResponse.getBody(), accountLoad, usageLoad));
+        return ResponseEntity.ok(new SetupResponse(loginResponse.getBody(), accountLoad, usageLoad, integrityReport));
     }
 
     @PostMapping("/login")

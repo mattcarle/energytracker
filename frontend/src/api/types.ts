@@ -167,6 +167,7 @@ export interface SetupResult {
   user: AuthUser
   accountLoad: AccountLoadResult
   usageLoad: UsageLoadResult
+  integrityReport: DataIntegrityReport
 }
 
 export interface DataIntegrityGap {

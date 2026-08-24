@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { setupAdmin } from '../api/client'
 import type { AuthUser, SetupResult } from '../api/types'
+import DataIntegrityReportView from '../components/DataIntegrityReportView'
+import Modal from '../components/Modal'
 import PasswordInput from '../components/PasswordInput'
 import './AuthScreen.css'
 
@@ -16,6 +18,7 @@ export default function Setup({ onComplete }: SetupProps) {
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<SetupResult | null>(null)
+  const [showIntegrityReport, setShowIntegrityReport] = useState(false)
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -28,7 +31,10 @@ export default function Setup({ onComplete }: SetupProps) {
 
     setSubmitting(true)
     setupAdmin(password, octopusAccountNumber, octopusAuthToken)
-      .then(setResult)
+      .then((setupResult) => {
+        setResult(setupResult)
+        setShowIntegrityReport(true)
+      })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to create admin account'))
       .finally(() => setSubmitting(false))
   }
@@ -53,6 +59,24 @@ export default function Setup({ onComplete }: SetupProps) {
             Continue
           </button>
         </div>
+        {showIntegrityReport && (
+          <Modal
+            title="Data integrity check"
+            onDismiss={() => setShowIntegrityReport(false)}
+            actions={
+              <button
+                type="button"
+                className="modal__button--primary"
+                onClick={() => setShowIntegrityReport(false)}
+              >
+                Close
+              </button>
+            }
+          >
+            <p>Here&rsquo;s how the data just loaded from Octopus Energy looks:</p>
+            <DataIntegrityReportView report={result.integrityReport} />
+          </Modal>
+        )}
       </div>
     )
   }

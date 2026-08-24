@@ -1,0 +1,42 @@
+.integrity-report__mpan {
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.integrity-report__mpan:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.integrity-report__mpan h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  color: var(--text-h);
+}
+
+.integrity-report__category {
+  margin-bottom: 10px;
+}
+
+.integrity-report__category:last-child {
+  margin-bottom: 0;
+}
+
+.integrity-report__category-title {
+  font-weight: 600;
+  color: var(--text-h);
+  margin: 0 0 2px;
+}
+
+.integrity-report__ok {
+  color: var(--text);
+  margin: 0;
+}
+
+.integrity-report__gaps {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  color: #d64545;
+}

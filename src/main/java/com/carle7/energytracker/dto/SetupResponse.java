@@ -8,11 +8,14 @@ public class SetupResponse {
     private final UserResponse user;
     private final AccountLoadResult accountLoad;
     private final UsageLoadResult usageLoad;
+    private final DataIntegrityReport integrityReport;
 
-    public SetupResponse(UserResponse user, AccountLoadResult accountLoad, UsageLoadResult usageLoad) {
+    public SetupResponse(UserResponse user, AccountLoadResult accountLoad, UsageLoadResult usageLoad,
+                          DataIntegrityReport integrityReport) {
         this.user = user;
         this.accountLoad = accountLoad;
         this.usageLoad = usageLoad;
+        this.integrityReport = integrityReport;
     }
 
     public UserResponse getUser() {
@@ -25,5 +28,9 @@ public class SetupResponse {
 
     public UsageLoadResult getUsageLoad() {
         return usageLoad;
+    }
+
+    public DataIntegrityReport getIntegrityReport() {
+        return integrityReport;
     }
 }
