@@ -2,34 +2,45 @@
 # for it automatically). For a real deployment, set SITE_ADDRESS to your domain in the .env file
 # next to docker-compose.yml - Caddy then obtains and renews a real Let's Encrypt certificate for
 # it on its own, as long as DNS points here and ports 80/443 are reachable from the internet.
-{$SITE_ADDRESS:localhost}
 
-encode gzip
-
-# The app lives at /energytracker (see frontend/vite.config.ts's `base`), and only ever calls
-# relative /api/... paths at the site root (see frontend/src/api/client.ts) - those are the only
-# routing decisions needed. Caddy reorders bare directives by its own fixed precedence
-# (try_files/file_server always run before reverse_proxy, regardless of source order), so
-# `handle`/`handle_path` blocks are used throughout - they're evaluated in the order written and
-# are mutually exclusive, which keeps that reordering from routing requests to the wrong place.
-handle /api/* {
-	reverse_proxy app:8080
+# www redirects to the bare domain rather than being served as an equal second hostname, so
+# there's one canonical URL instead of two hostnames browsers/search engines would otherwise
+# treat as separate sites. Needs its own DNS record pointing here - Caddy issues it a separate
+# Let's Encrypt cert automatically, same as the primary domain. Two sites in one Caddyfile means
+# each now needs its own `{ }` block - Caddy only allows the bare-address, no-braces shorthand
+# used before when there's exactly one site.
+www.{$SITE_ADDRESS:localhost} {
+	redir * https://{$SITE_ADDRESS:localhost}{uri} 308
 }
 
-# redir's 2-arg form ("<to> <code>") is ambiguous with its "[<matcher>] <to>" form - Caddy
-# treats a bare 2nd arg as the matcher and the status code as the destination, producing a
-# broken redirect to a literal "308" URL. The 3-arg form with an explicit "match everything"
-# matcher (*) is unambiguous, so that's used here even though the code is unconditional.
-handle / {
-	redir * /energytracker/ 308
-}
+{$SITE_ADDRESS:localhost} {
+	encode gzip
 
-handle /energytracker {
-	redir * /energytracker/ 308
-}
+	# The app lives at /energytracker (see frontend/vite.config.ts's `base`), and only ever calls
+	# relative /api/... paths at the site root (see frontend/src/api/client.ts) - those are the only
+	# routing decisions needed. Caddy reorders bare directives by its own fixed precedence
+	# (try_files/file_server always run before reverse_proxy, regardless of source order), so
+	# `handle`/`handle_path` blocks are used throughout - they're evaluated in the order written and
+	# are mutually exclusive, which keeps that reordering from routing requests to the wrong place.
+	handle /api/* {
+		reverse_proxy app:8080
+	}
 
-handle_path /energytracker/* {
-	root * /srv
-	file_server
-	try_files {path} /index.html
+	# redir's 2-arg form ("<to> <code>") is ambiguous with its "[<matcher>] <to>" form - Caddy
+	# treats a bare 2nd arg as the matcher and the status code as the destination, producing a
+	# broken redirect to a literal "308" URL. The 3-arg form with an explicit "match everything"
+	# matcher (*) is unambiguous, so that's used here even though the code is unconditional.
+	handle / {
+		redir * /energytracker/ 308
+	}
+
+	handle /energytracker {
+		redir * /energytracker/ 308
+	}
+
+	handle_path /energytracker/* {
+		root * /srv
+		file_server
+		try_files {path} /index.html
+	}
 }
