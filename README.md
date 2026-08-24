@@ -60,8 +60,8 @@ A React 19 + TypeScript SPA built with Vite.
 - **`src/components/`** — shared UI (charts, modals).
 - **`src/api/`** — typed HTTP client for the backend `/api/*` endpoints.
 
-In dev mode, Vite proxies requests to `/api` through to `http://localhost:8080` (see
-`frontend/vite.config.ts`), so the backend must be running for the UI to have data.
+In dev mode, Vite proxies requests to `/energytracker/api` through to `http://localhost:8080`
+(see `frontend/vite.config.ts`), so the backend must be running for the UI to have data.
 
 ## Running the app
 
@@ -181,27 +181,25 @@ dev target on port 8080, where nothing is listening).
 
 ## Deploying with Docker
 
-The included `docker-compose.yml` runs the app as two containers:
+This app shares its host and domain (`carle7.com`) with other apps behind a single reverse proxy
+— see the separate [`carle7-edge`](https://github.com/mattcarle/carle7-edge) repo, which is the
+only thing on the host that binds ports 80/443 or terminates TLS. The included
+`docker-compose.yml` here runs just this app's own two containers, on a private network plus the
+`carle7-edge` network that proxy reaches them on:
 
 - **`app`** — the Spring Boot backend, built by the root `Dockerfile`, running the `prod`
   profile on plain HTTP internally (port 8080, not published to the host). Its H2 database
   file lives in the `h2-data` named volume, so it survives container rebuilds/restarts.
 - **`caddy`** — built by `frontend/Dockerfile`, serves the built React static files and
-  reverse-proxies `/api/*` to `app`. It also terminates TLS: for a real domain it obtains and
-  renews a Let's Encrypt certificate automatically; for `localhost` it issues a locally-trusted
-  self-signed one. Ports 80/443 are published to the host, and its ACME account/certs live in
-  the `caddy-data`/`caddy-config` volumes, so a restart doesn't re-request them and risk
-  Let's Encrypt's rate limits.
+  reverse-proxies `/energytracker/api/*` to `app`. It speaks plain HTTP on the Docker network
+  only (no TLS, no published ports) — `carle7-edge` forwards it everything under
+  `/energytracker/*` unmodified, still carrying that prefix.
 
 ### First-time deployment
 
-1. Copy `.env.example` to `.env` and set `SITE_ADDRESS` to your real domain (DNS must already
-   point at this host, with ports 80/443 reachable from the internet, for Caddy to obtain a
-   Let's Encrypt certificate). Leave it unset/`localhost` for local testing only.
-
-   ```bash
-   cp .env.example .env
-   ```
+1. Bring up [`carle7-edge`](https://github.com/mattcarle/carle7-edge) first if it isn't already
+   running — it creates the `carle7-edge` Docker network this app's `caddy` service attaches to.
+   `docker compose up` here fails until that network exists.
 
 2. Build and start both containers:
 
@@ -209,18 +207,17 @@ The included `docker-compose.yml` runs the app as two containers:
    docker compose up -d --build
    ```
 
-3. Open `https://<SITE_ADDRESS>/energytracker/` (or `https://localhost/energytracker/` for a
-   local test — accept the self-signed certificate warning; visiting the bare domain root
-   redirects there automatically). On first run, no admin user exists yet — the setup wizard
-   walks you through creating an admin password and entering your Octopus Energy account
-   number and API auth token.
+3. Open `https://<SITE_ADDRESS>/energytracker/` (`SITE_ADDRESS` is configured in `carle7-edge`,
+   not here). On first run, no admin user exists yet — the setup wizard walks you through
+   creating an admin password and entering your Octopus Energy account number and API auth
+   token.
 
 Check container status/logs with:
 
 ```bash
 docker compose ps
 docker compose logs -f app       # backend logs
-docker compose logs -f caddy     # reverse proxy / TLS logs
+docker compose logs -f caddy     # reverse proxy logs
 ```
 
 ### Updating after code or config changes
@@ -247,12 +244,6 @@ config change and recreates the affected container(s).
 The `h2-data` volume is untouched by rebuilds or `docker compose down`, so the database
 persists across updates. Only `docker compose down -v` (or manually removing the volume)
 deletes it — avoid that unless you actually intend to wipe all data.
-
-### Local testing without a real domain
-
-Leaving `SITE_ADDRESS` unset (or `.env` absent) makes Caddy serve `https://localhost` with a
-locally-trusted certificate — no DNS or public ports required. This is the same `docker
-compose up -d --build` command as above; nothing else changes.
 
 ## Other useful commands
 

@@ -21,9 +21,14 @@ export default defineConfig(({ mode }) => {
       // the machine's LAN IP (e.g. from a phone on the same Wi-Fi) - Vite defaults to localhost-only.
       host: true,
       proxy: {
-        '/api': {
+        // The frontend calls /energytracker/api/... (see src/api/client.ts) so its requests carry
+        // the same path prefix in dev as they will once deployed behind the shared reverse proxy
+        // (see frontend/Caddyfile) - the backend itself is still mapped at bare /api/..., so the
+        // prefix is stripped here before forwarding.
+        '/energytracker/api': {
           target: apiProxyTarget,
           changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/energytracker/, ''),
           // Only takes effect for https targets - lets the proxy reach a backend using the
           // self-signed cert from the README's "Running in production" section.
           secure: false,

@@ -32,18 +32,21 @@ services:
     restart: unless-stopped
     depends_on:
       - app
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
-    volumes:
-      # Caddy's own state (ACME account + issued certs) - keep this, or a restart re-requests
-      # certificates and can hit Let's Encrypt's rate limits.
-      - caddy-data:/data
-      - caddy-config:/config
+    expose:
+      - "80"
+    networks:
+      # Needed to reach `app` - listing any network here drops compose's implicit default, so it's
+      # named explicitly alongside the shared one below.
+      default: {}
+      # The carle7-edge reverse proxy (see that repo) reaches this container by the alias below -
+      # bring that stack up first, since this network is only created there.
+      carle7-edge:
+        aliases:
+          - energytracker
+
+networks:
+  carle7-edge:
+    external: true
 
 volumes:
   h2-data:
-  caddy-data:
-  caddy-config:

@@ -32,6 +32,12 @@ function getCookie(name: string): string | null {
   return match ? decodeURIComponent(match[1]) : null
 }
 
+// The app is served at https://<domain>/energytracker/ (see frontend/vite.config.ts's `base`),
+// sharing the domain with other apps behind the same reverse proxy - so API calls are namespaced
+// under that same prefix rather than the bare `/api/...` a single-app deployment could get away
+// with. Caddy strips it back off before the request reaches the backend (see frontend/Caddyfile).
+const API_BASE = '/energytracker'
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const method = (options.method ?? 'GET').toUpperCase()
   const headers = new Headers(options.headers)
@@ -44,7 +50,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers.set('Content-Type', 'application/json')
   }
 
-  const response = await fetch(path, { ...options, headers })
+  const response = await fetch(`${API_BASE}${path}`, { ...options, headers })
 
   if (!response.ok) {
     const errorBody = (await response.json().catch(() => null)) as { error?: string } | null
