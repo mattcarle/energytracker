@@ -32,11 +32,12 @@ function getCookie(name: string): string | null {
   return match ? decodeURIComponent(match[1]) : null
 }
 
-// The app is served at https://<domain>/energytracker/ (see frontend/vite.config.ts's `base`),
-// sharing the domain with other apps behind the same reverse proxy - so API calls are namespaced
-// under that same prefix rather than the bare `/api/...` a single-app deployment could get away
-// with. Caddy strips it back off before the request reaches the backend (see frontend/Caddyfile).
-const API_BASE = '/energytracker'
+// Derived from Vite's `base` (see vite.config.ts) rather than hardcoded, since a second instance
+// of this same app can be built to live at a different path prefix (e.g. /energytracker2/)
+// sharing the domain with this one - API calls are namespaced under that same prefix rather than
+// the bare `/api/...` a single-instance deployment could get away with. Caddy strips it back off
+// before the request reaches the backend (see frontend/Caddyfile).
+const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, '')
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const method = (options.method ?? 'GET').toUpperCase()

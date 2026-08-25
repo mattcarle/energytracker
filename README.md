@@ -245,6 +245,25 @@ The `h2-data` volume is untouched by rebuilds or `docker compose down`, so the d
 persists across updates. Only `docker compose down -v` (or manually removing the volume)
 deletes it — avoid that unless you actually intend to wipe all data.
 
+### Running a second, independent instance
+
+`docker-compose.yml` also defines `app2`/`caddy2` — a second instance of this same app (own
+database in the `h2-data-2` volume, own Octopus account/credentials entered via its own setup
+wizard) sharing the domain at `/energytracker2`, alongside the primary instance at
+`/energytracker`. What differs from `app`/`caddy`:
+
+- `app2`'s `SPRING_DATASOURCE_URL` points at a separate database file, and its `APP_BASE_PATH`
+  env var (`/energytracker2`) scopes its session/CSRF cookies to that path so they don't collide
+  with the primary instance's cookies on the same domain (see `SecurityConfig`).
+- `caddy2` is built with `APP_BASE_PATH=/energytracker2/` (a build arg — bakes that prefix into
+  the frontend's asset URLs) and run with `APP_PATH`/`APP_UPSTREAM` env vars (runtime - tells
+  `frontend/Caddyfile` which path prefix and which backend container name to use), and joins
+  `carle7-edge` under the `energytracker2` alias instead of `energytracker`.
+
+Add `app3`/`caddy3` the same way for a third instance. Each instance also needs a matching
+`handle /energytracker2` + `handle /energytracker2/*` pair in `carle7-edge`'s own `Caddyfile` -
+see that repo's README.
+
 ## Other useful commands
 
 ```bash

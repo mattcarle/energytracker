@@ -7,6 +7,12 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
+# Defaults to the primary instance's path (see vite.config.ts) - override to build a second
+# instance of this same app for a different path prefix (e.g. /energytracker2/), and set the
+# matching $APP_PATH/$APP_UPSTREAM on that instance's caddy service (see frontend/Caddyfile and
+# docker-compose.yml).
+ARG APP_BASE_PATH=/energytracker/
+ENV APP_BASE_PATH=$APP_BASE_PATH
 RUN npm run build
 
 FROM caddy:2-alpine

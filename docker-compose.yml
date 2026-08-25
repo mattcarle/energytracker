@@ -44,9 +44,52 @@ services:
         aliases:
           - energytracker
 
+  # A second, independent instance of this same app (separate database, separate Octopus account/
+  # credentials entered via its own setup wizard) sharing the domain at /energytracker2 - see
+  # frontend/Caddyfile and carle7-edge's own Caddyfile for how the path prefix is wired up. Only
+  # the path prefix/upstream name and the DB file differ from `app`/`caddy` above; add app3/caddy3
+  # the same way for a third instance.
+  app2:
+    build:
+      context: .
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8080
+      SERVER_SSL_ENABLED: "false"
+      SPRING_DATASOURCE_URL: jdbc:h2:file:/data/energytracker2-prod;DB_CLOSE_DELAY=-1
+      # Scopes this instance's session/CSRF cookies to /energytracker2 (see SecurityConfig) so
+      # they don't collide with the primary instance's cookies on the same domain.
+      APP_BASE_PATH: /energytracker2
+    volumes:
+      - h2-data-2:/data
+    expose:
+      - "8080"
+    mem_limit: 4g
+
+  caddy2:
+    build:
+      context: ./frontend
+      args:
+        APP_BASE_PATH: /energytracker2/
+    restart: unless-stopped
+    depends_on:
+      - app2
+    environment:
+      APP_PATH: /energytracker2
+      APP_UPSTREAM: app2
+    expose:
+      - "80"
+    networks:
+      default: {}
+      carle7-edge:
+        aliases:
+          - energytracker2
+
 networks:
   carle7-edge:
     external: true
 
 volumes:
   h2-data:
+  h2-data-2:

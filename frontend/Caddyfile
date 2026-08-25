@@ -1,31 +1,35 @@
 # This app runs behind the shared carle7-edge reverse proxy (see the carle7-edge repo), which
 # owns the real domain, TLS, and the site root - this Caddy only ever sees plain HTTP on the
-# Docker network, still carrying the /energytracker prefix the edge routed on. Its own site
-# address is deliberately just the port, not a hostname, so Caddy doesn't attempt automatic HTTPS
-# for it.
+# Docker network, still carrying the $APP_PATH prefix the edge routed on. Its own site address is
+# deliberately just the port, not a hostname, so Caddy doesn't attempt automatic HTTPS for it.
+#
+# $APP_PATH/$APP_UPSTREAM let this same image serve a second instance of this app at a different
+# path prefix against a different backend container (see docker-compose.yml) - $APP_PATH must
+# match the APP_BASE_PATH this image's frontend was built with (see frontend/Dockerfile) and the
+# prefix carle7-edge forwards requests under (see that repo's Caddyfile).
 :80 {
 	encode gzip
 
-	# The app lives at /energytracker (see frontend/vite.config.ts's `base`), and calls
-	# /energytracker/api/... for its API (see frontend/src/api/client.ts) - those are the only
-	# routing decisions needed. Caddy reorders bare directives by its own fixed precedence
+	# The app lives at $APP_PATH (see frontend/vite.config.ts's `base`), and calls
+	# $APP_PATH/api/... for its API (see frontend/src/api/client.ts) - those are the only routing
+	# decisions needed. Caddy reorders bare directives by its own fixed precedence
 	# (try_files/file_server always run before reverse_proxy, regardless of source order), so
 	# `handle`/`handle_path` blocks are used throughout - they're evaluated in the order written and
 	# are mutually exclusive, which keeps that reordering from routing requests to the wrong place.
-	handle /energytracker/api/* {
-		uri strip_prefix /energytracker
-		reverse_proxy app:8080
+	handle {$APP_PATH:/energytracker}/api/* {
+		uri strip_prefix {$APP_PATH:/energytracker}
+		reverse_proxy {$APP_UPSTREAM:app}:8080
 	}
 
 	# redir's 2-arg form ("<to> <code>") is ambiguous with its "[<matcher>] <to>" form - Caddy
 	# treats a bare 2nd arg as the matcher and the status code as the destination, producing a
 	# broken redirect to a literal "308" URL. The 3-arg form with an explicit "match everything"
 	# matcher (*) is unambiguous, so that's used here even though the code is unconditional.
-	handle /energytracker {
-		redir * /energytracker/ 308
+	handle {$APP_PATH:/energytracker} {
+		redir * {$APP_PATH:/energytracker}/ 308
 	}
 
-	handle_path /energytracker/* {
+	handle_path {$APP_PATH:/energytracker}/* {
 		root * /srv
 		file_server
 		try_files {path} /index.html

@@ -3,6 +3,7 @@ package com.carle7.energytracker.config;
 import com.carle7.energytracker.security.CsrfCookieFilter;
 import com.carle7.energytracker.security.PasswordChangeRequiredFilter;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -22,6 +23,12 @@ import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
 @Configuration
 public class SecurityConfig {
+
+    // See application.properties - scopes the CSRF cookie to this instance's own path prefix,
+    // same as the session cookie (server.servlet.session.cookie.path), so a second instance of
+    // this app sharing the domain under a different prefix doesn't clobber this one's cookies.
+    @Value("${app.base-path}")
+    private String appBasePath;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -44,11 +51,14 @@ public class SecurityConfig {
             SecurityContextRepository securityContextRepository,
             PasswordChangeRequiredFilter passwordChangeRequiredFilter) throws Exception {
 
+        CookieCsrfTokenRepository csrfTokenRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+        csrfTokenRepository.setCookiePath(appBasePath);
+
         http
                 .securityContext(context -> context.securityContextRepository(securityContextRepository))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .csrf(csrf -> csrf
-                        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                        .csrfTokenRepository(csrfTokenRepository)
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
                         .ignoringRequestMatchers("/h2-console/**"))
                 .headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin))
