@@ -209,6 +209,8 @@ export interface SolarByMonthResponse {
 export interface SolarPowerPoint {
   time: string
   powerWatts: number | null
+  // Battery state of charge, 0-100, null when not reported.
+  batteryPercent: number | null
 }
 
 export interface SolarHourlyResponse {

@@ -47,6 +47,11 @@ interface UsagePeriodViewProps {
   solarTotalKwh?: number | null
   solarAvailable?: boolean
   solarUnit?: 'kWh' | 'kW'
+  // Battery state-of-charge overlay (0-100) - Day page only, since it comes from the same live
+  // Growatt call as solar but has its own checkbox (batteryAvailable/showBattery) so either can
+  // be shown/hidden independently.
+  batteryByKey?: Map<string, number> | null
+  batteryAvailable?: boolean
   // Opt-in, so a future usage-by-X page can still fall back to chart/table-only behaviour.
   enableInsights?: boolean
   // Singular period noun for the Insights section's "Average per X" cards - "Day" for Usage by
@@ -164,6 +169,8 @@ export default function UsagePeriodView({
   solarTotalKwh = null,
   solarAvailable = false,
   solarUnit = 'kWh',
+  batteryByKey = null,
+  batteryAvailable = false,
 }: UsagePeriodViewProps) {
   const isMobile = useIsMobile()
   const [selectedMpans, setSelectedMpans] = useState<Set<string> | null>(null)
@@ -172,6 +179,7 @@ export default function UsagePeriodView({
   const [showInsights, setShowInsights] = useState(true)
   const [chartView, setChartView] = useState<ChartView>('usage')
   const [showSolar, setShowSolar] = useState(true)
+  const [showBattery, setShowBattery] = useState(true)
 
   // The table isn't offered on mobile at all - deriving this rather than forcing showTable
   // itself to false keeps the desktop toggle state intact if the viewport is later resized back
@@ -222,6 +230,10 @@ export default function UsagePeriodView({
   // checkbox is on. Gates the chart overlay, the toolbar total, and the insights section
   // identically, the same way selectedMpans gates the MPAN-driven equivalents of each.
   const solarActive = solarAvailable && showSolar && solarByKey !== null && solarTotalKwh !== null
+
+  // Same idea as solarActive, but its own checkbox - battery can be shown/hidden independently
+  // of solar even though both come from the same live Growatt call.
+  const batteryActive = batteryAvailable && showBattery && batteryByKey !== null
 
   // Count of rows solarByKey actually has a value for, not rows.length - a page showing a
   // partly-future range (e.g. the rest of this month) shouldn't dilute the average with periods
@@ -364,6 +376,10 @@ export default function UsagePeriodView({
     setShowSolar((current) => !current)
   }
 
+  function toggleBattery() {
+    setShowBattery((current) => !current)
+  }
+
   const hasAnyUsage =
     rows?.some((row) => Object.values(row.byMpan).some((f) => f.kwh !== 0 || f.total !== 0)) ?? false
 
@@ -434,7 +450,7 @@ export default function UsagePeriodView({
         </div>
       </div>
 
-      {((meterPoints && meterPoints.length > 0) || solarAvailable) && (
+      {((meterPoints && meterPoints.length > 0) || solarAvailable || batteryAvailable) && (
         <div className="usage-page__mpan-toggles">
           {meterPoints?.map((mp) => (
             <label key={mp.mpan} className="usage-page__mpan-toggle">
@@ -450,6 +466,12 @@ export default function UsagePeriodView({
             <label className="usage-page__mpan-toggle">
               <input type="checkbox" checked={showSolar} onChange={toggleSolar} />
               Solar
+            </label>
+          )}
+          {batteryAvailable && (
+            <label className="usage-page__mpan-toggle">
+              <input type="checkbox" checked={showBattery} onChange={toggleBattery} />
+              Battery
             </label>
           )}
         </div>
@@ -510,6 +532,7 @@ export default function UsagePeriodView({
                     }
                   : undefined
               }
+              battery={batteryActive && batteryByKey ? { byKey: batteryByKey } : undefined}
             />
           )}
         </div>

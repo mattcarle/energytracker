@@ -421,9 +421,13 @@ export interface SolarOverlayData {
   totalKwh: number | null
   available: boolean
   error: string | null
+  // Day page only (see useSolarDayOverlay) - battery state of charge (0-100), averaged per half
+  // hour. Undefined/null on the period-based pages, which have no equivalent intraday data to
+  // derive it from.
+  batteryByKey?: Map<string, number> | null
 }
 
-const EMPTY_SOLAR: SolarOverlayData = { byKey: null, totalKwh: null, available: false, error: null }
+const EMPTY_SOLAR: SolarOverlayData = { byKey: null, totalKwh: null, available: false, error: null, batteryByKey: null }
 
 // /api/growatt/** (which would otherwise answer "is Growatt configured?" directly) is admin-only,
 // but every usage page is visible to any authenticated user - so availability is inferred from
@@ -482,27 +486,42 @@ export function useSolarPeriodOverlay(
 
 const WATTS_PER_KW = 1000
 
-// Averages the (up to 6) 5-minute power readings falling in each half-hour into one point, so
-// the curve aligns with UsageByDay's 48 half-hourly bars - a category-axis bar chart has no
-// defined position for a denser line series otherwise. A bucket with no non-null readings (e.g.
-// a not-yet-elapsed half hour) is left out of the map entirely, rendering as a gap rather than a
-// fabricated flat value. Converted to kW here (not just at display time) so the values are
-// already the same order of magnitude as the half-hourly kWh bars they're sharing an axis with.
-function bucketPowerCurveToHalfHours(points: SolarPowerPoint[]): Map<string, number> {
+// Averages the (up to 6) 5-minute readings falling in each half-hour into one point, so the
+// curve aligns with UsageByDay's 48 half-hourly bars - a category-axis bar chart has no defined
+// position for a denser line series otherwise. A bucket with no non-null readings (e.g. a
+// not-yet-elapsed half hour) is left out of the map entirely, rendering as a gap rather than a
+// fabricated flat value. `pick` selects which field of a point to bucket - shared between the
+// solar (ppv-derived) and battery (state of charge) curves, which otherwise only differ in that
+// field and in `divisor` (Watts -> kW for solar so it's the same order of magnitude as the
+// half-hourly kWh bars it shares an axis with; battery's 0-100 percent needs no conversion).
+function bucketToHalfHours(
+  points: SolarPowerPoint[],
+  pick: (p: SolarPowerPoint) => number | null,
+  divisor: number,
+): Map<string, number> {
   const sums = new Map<string, { total: number; count: number }>()
   for (const p of points) {
-    if (p.powerWatts === null) continue
+    const value = pick(p)
+    if (value === null) continue
     const timePart = p.time.slice(11, 16) // "YYYY-MM-DD HH:mm" -> "HH:mm"
     const [h, m] = timePart.split(':').map(Number)
     const bucketKey = `${pad2(h)}:${m < 30 ? '00' : '30'}`
     const entry = sums.get(bucketKey) ?? { total: 0, count: 0 }
-    entry.total += p.powerWatts
+    entry.total += value
     entry.count += 1
     sums.set(bucketKey, entry)
   }
   const result = new Map<string, number>()
-  for (const [key, { total, count }] of sums) result.set(key, total / count / WATTS_PER_KW)
+  for (const [key, { total, count }] of sums) result.set(key, total / count / divisor)
   return result
+}
+
+function bucketPowerCurveToHalfHours(points: SolarPowerPoint[]): Map<string, number> {
+  return bucketToHalfHours(points, (p) => p.powerWatts, WATTS_PER_KW)
+}
+
+function bucketBatteryCurveToHalfHours(points: SolarPowerPoint[]): Map<string, number> {
+  return bucketToHalfHours(points, (p) => p.batteryPercent, 1)
 }
 
 // Day page's solar overlay: the intraday power curve (kW, bucketed to half hours) for the
@@ -525,6 +544,7 @@ export function useSolarDayOverlay(date: string): SolarOverlayData {
           totalKwh: dayTotal.days[0]?.kwh ?? 0,
           available: true,
           error: null,
+          batteryByKey: bucketBatteryCurveToHalfHours(hourly.points),
         })
       })
       .catch((err: unknown) => {

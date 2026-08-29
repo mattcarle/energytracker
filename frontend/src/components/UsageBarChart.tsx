@@ -58,8 +58,8 @@ function missingHatchPatterns(colors: string[], kind: HatchKind) {
 
 export type ChartMetric = 'kwh' | 'cost'
 
-const SOLAR_SERIES_NAME_KWH = 'Solar generation'
-const SOLAR_SERIES_NAME_KW = 'Solar power (kW)'
+const SOLAR_SERIES_NAME_KWH = 'Solar'
+const SOLAR_SERIES_NAME_KW = 'Solar'
 
 export interface SolarOverlayProps {
   // Period key (PeriodRow.key) -> value - kWh for the period-based pages, kW for the Day page's
@@ -72,6 +72,14 @@ export interface SolarOverlayProps {
   useSecondaryAxis: boolean
 }
 
+export interface BatteryOverlayProps {
+  // Period key -> battery state of charge, 0-100 - always the Day page's intraday curve (no
+  // persisted period-level figure exists, unlike solar). Always plotted on its own fixed 0-100
+  // axis (see the "battery" YAxis below) rather than sharing with the bars or with solar - a
+  // percentage isn't on the same scale as either kWh/£ or kW.
+  byKey: Map<string, number>
+}
+
 interface UsageBarChartProps {
   rows: PeriodRow[]
   meterPoints: MeterPoint[]
@@ -80,6 +88,7 @@ interface UsageBarChartProps {
   // split, same as the table column that drives this same flag.
   offPeakAvailableByMpan?: Map<string, boolean>
   solar?: SolarOverlayProps
+  battery?: BatteryOverlayProps
 }
 
 function usageKey(mpan: string): string {
@@ -173,13 +182,22 @@ function formatSolarValue(value: number, unit: 'kWh' | 'kW'): string {
   return `${value.toFixed(2)} ${unit}`
 }
 
-export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvailableByMpan, solar }: UsageBarChartProps) {
+const BATTERY_SERIES_NAME = 'Battery'
+
+function formatBatteryValue(value: number): string {
+  return `${Math.round(value)}%`
+}
+
+export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvailableByMpan, solar, battery }: UsageBarChartProps) {
   const isMobile = useIsMobile()
   const solarSeriesName = solar?.unit === 'kW' ? SOLAR_SERIES_NAME_KW : SOLAR_SERIES_NAME_KWH
   const data = rows.map((row) => {
     const point: Record<string, number | string | boolean | null> = { dayLabel: row.chartLabel }
     if (solar) {
       point.solarValue = solar.byKey.get(row.key) ?? null
+    }
+    if (battery) {
+      point.batteryValue = battery.byKey.get(row.key) ?? null
     }
     for (const mp of meterPoints) {
       const figures = row.byMpan[mp.mpan]
@@ -211,11 +229,15 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
   // left ends up with 0 in the middle, right with 0 at the very bottom). Both axes are given an
   // explicit, jointly-computed domain instead so their zero points align exactly; the primary
   // axis's own natural range is untouched otherwise (padding matches niceCeil, not stretched),
-  // and only the secondary (solar) axis gets an invisible negative floor added below its real
-  // zero, sized so it lands at the same fractional height as the primary axis's zero.
+  // and only the secondary axis gets an invisible negative floor added below its real zero,
+  // sized so it lands at the same fractional height as the primary axis's zero. Battery's own
+  // axis needs the same treatment - its top (100%) is fixed, but its floor grows the same way
+  // solar's does, so 0% lines up with the primary axis's zero too.
   let primaryDomain: [number, number] | undefined
   let solarDomain: [number, number] | undefined
-  if (solar?.useSecondaryAxis) {
+  let solarTicks: number[] | undefined
+  let batteryDomain: [number, number] | undefined
+  if (solar?.useSecondaryAxis || battery) {
     const groupsByStackId = new Map<string, MeterPoint[]>()
     for (const mp of meterPoints) {
       const id = stackIdFor(mp)
@@ -245,28 +267,53 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
         if (neg < primMinRaw) primMinRaw = neg
       }
     }
-
-    let solarMaxRaw = 0
-    for (const value of solar.byKey.values()) {
-      if (value > solarMaxRaw) solarMaxRaw = value
+    // When solar shares the primary axis (not useSecondaryAxis), it would otherwise be part of
+    // Recharts' own auto-domain for that axis - folded in here so an explicit primaryDomain
+    // (now always set whenever battery needs one) doesn't clip it back down to the bars' own
+    // range.
+    if (solar && !solar.useSecondaryAxis) {
+      for (const value of solar.byKey.values()) {
+        if (value > primMaxRaw) primMaxRaw = value
+      }
     }
 
     const primMax = niceCeil(primMaxRaw || 1)
     const primMin = primMinRaw < 0 ? niceFloor(primMinRaw) : 0
-    const solarMax = niceCeil(solarMaxRaw || 1)
     // Fraction of the primary axis that sits below zero - the secondary axis's own negative
-    // floor is sized so its zero lands at this same fraction, even though solar itself never
-    // goes negative.
+    // floor is sized so its zero lands at this same fraction, even though solar/battery
+    // themselves never go negative.
     const belowZeroFraction = primMax > primMin ? -primMin / (primMax - primMin) : 0
-    // The division above is the one domain value not already snapped to a round number by
-    // niceCeil/niceFloor - rounded to the nearest whole unit so it (and the near-zero tick
-    // Recharts' own "nice" tick step then derives from it) don't inherit float noise like
-    // -1999.9999999999998 or a stray 2e-13 "zero".
-    const solarMin = belowZeroFraction > 0 ? Math.round(-(belowZeroFraction / (1 - belowZeroFraction)) * solarMax) : 0
+    // The rounding below undoes the one domain value not already snapped to a round number by
+    // niceCeil/niceFloor, so it (and the near-zero tick Recharts' own "nice" tick step then
+    // derives from it) don't inherit float noise like -1999.9999999999998 or a stray 2e-13 "zero".
+    function alignedFloor(max: number): number {
+      return belowZeroFraction > 0 ? Math.round(-(belowZeroFraction / (1 - belowZeroFraction)) * max) : 0
+    }
 
     primaryDomain = [primMin, primMax]
-    solarDomain = [solarMin, solarMax]
+
+    if (solar?.useSecondaryAxis) {
+      let solarMaxRaw = 0
+      for (const value of solar.byKey.values()) {
+        if (value > solarMaxRaw) solarMaxRaw = value
+      }
+      const solarMax = niceCeil(solarMaxRaw || 1)
+      solarDomain = [alignedFloor(solarMax), solarMax]
+      // Explicit ticks, same reasoning as BATTERY_TICKS below - without this, Recharts' own
+      // "nice" tick step spans the whole domain including the invisible negative floor, which
+      // surfaces a negative tick (e.g. "-6") even though solar itself never goes negative.
+      solarTicks = [0, solarMax / 4, solarMax / 2, (solarMax * 3) / 4, solarMax]
+    }
+
+    if (battery) {
+      batteryDomain = [alignedFloor(100), 100]
+    }
   }
+
+  // Battery's real range is always 0-100 - fixed ticks so the invisible negative floor added
+  // above (to align 0% with the other axes' zero) never grows a meaningless negative-percent
+  // tick label.
+  const BATTERY_TICKS = [0, 25, 50, 75, 100]
 
   // Thin out x-axis labels for a full month so they don't overlap; every day is still a
   // separate bar group, only the tick labels are skipped. Mobile gets a much lower cap since
@@ -288,8 +335,9 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
         { label: `${label} – Off-peak`, color: MPAN_OFFPEAK_COLORS[index % MPAN_OFFPEAK_COLORS.length] },
       ]
     }),
-    ...(metric === 'cost' ? [{ label: 'Standing charge', color: 'var(--chart-stdchg)' }] : []),
+    ...(metric === 'cost' ? [{ label: 'Std charge', color: 'var(--chart-stdchg)' }] : []),
     ...(solar ? [{ label: solarSeriesName, color: 'var(--chart-solar)' }] : []),
+    ...(battery ? [{ label: BATTERY_SERIES_NAME, color: 'var(--chart-battery)' }] : []),
   ]
 
   const hasAnyMissing = data.some((point) => meterPoints.some((mp) => point[missingKey(mp.mpan)]))
@@ -319,9 +367,21 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
               yAxisId="solar"
               orientation="right"
               domain={solarDomain}
+              ticks={solarTicks}
               tick={{ fill: 'var(--chart-solar)', fontSize: 11 }}
               tickFormatter={(value: number) => `${roundTick(value)}`}
               width={56}
+            />
+          )}
+          {battery && (
+            <YAxis
+              yAxisId="battery"
+              orientation="right"
+              domain={batteryDomain}
+              ticks={BATTERY_TICKS}
+              tick={{ fill: 'var(--chart-battery)', fontSize: 11 }}
+              tickFormatter={(value: number) => `${value}%`}
+              width={40}
             />
           )}
           <ReferenceLine y={0} stroke="var(--text)" />
@@ -329,11 +389,11 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
               the finger that triggered it, so it's dropped entirely on mobile rather than shown. */}
           {!isMobile && (
             <Tooltip
-              formatter={(value, name) =>
-                solar && name === solarSeriesName
-                  ? [formatSolarValue(Number(value), solar.unit), name]
-                  : [formatValue(Number(value), metric), name]
-              }
+              formatter={(value, name) => {
+                if (solar && name === solarSeriesName) return [formatSolarValue(Number(value), solar.unit), name]
+                if (battery && name === BATTERY_SERIES_NAME) return [formatBatteryValue(Number(value)), name]
+                return [formatValue(Number(value), metric), name]
+              }}
               contentStyle={{
                 background: 'var(--bg)',
                 border: '1px solid var(--border)',
@@ -435,11 +495,24 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
               type="monotone"
               dataKey="solarValue"
               stroke="var(--chart-solar)"
-              strokeWidth={2}
+              strokeWidth={3}
               dot={false}
               connectNulls={false}
               isAnimationActive={false}
               name={solarSeriesName}
+            />
+          )}
+          {battery && (
+            <Line
+              yAxisId="battery"
+              type="monotone"
+              dataKey="batteryValue"
+              stroke="var(--chart-battery)"
+              strokeWidth={3}
+              dot={false}
+              connectNulls={false}
+              isAnimationActive={false}
+              name={BATTERY_SERIES_NAME}
             />
           )}
         </ComposedChart>
