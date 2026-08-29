@@ -4,9 +4,8 @@ import com.carle7.energytracker.model.SolarGeneration;
 import com.carle7.energytracker.repository.SolarByPeriodProjection;
 import com.carle7.energytracker.repository.SolarDateRangeProjection;
 import com.carle7.energytracker.repository.SolarGenerationRepository;
+import com.carle7.energytracker.service.GrowattApiService.MixDataPointDto;
 import com.carle7.energytracker.service.GrowattApiService.PlantDataDto;
-import com.carle7.energytracker.service.GrowattApiService.PlantPowerData;
-import com.carle7.energytracker.service.GrowattApiService.PowerPointDto;
 import com.carle7.energytracker.service.GrowattCredentialsService;
 import com.carle7.energytracker.service.GrowattService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -107,16 +106,19 @@ public class SolarController {
     }
 
     // Live proxy, not persisted - see the plan's note on why intraday power isn't backfilled.
+    // Device-level (mix_data's `ppv`), not the plant-level power endpoint - see
+    // GrowattApiService.fetchMixData's comment for why: the plant-level figure turned out to be
+    // inverter AC output (mixed with battery activity), not isolated PV.
     @GetMapping("/api/solar/hourly")
     public SolarHourlyResponse getSolarHourly(@RequestParam LocalDate date) {
-        PlantPowerData data = growattService.getLivePowerCurve(date);
-        if (data == null || data.powers == null) {
+        List<MixDataPointDto> data = growattService.getLivePowerCurve(date);
+        if (data == null) {
             return new SolarHourlyResponse(List.of());
         }
-        // Growatt returns powers[] in arbitrary order, not chronological - time is
-        // "yyyy-MM-dd HH:mm" (fixed-width, zero-padded), so plain string ordering sorts it
+        // Points come back in arbitrary order, not chronological - time is
+        // "yyyy-MM-dd HH:mm:ss" (fixed-width, zero-padded), so plain string ordering sorts it
         // correctly without needing a date-time parse.
-        List<PowerPoint> points = data.powers.stream()
+        List<PowerPoint> points = data.stream()
                 .sorted(Comparator.comparing(dto -> dto.time))
                 .map(SolarController::toPowerPoint)
                 .toList();
@@ -146,8 +148,8 @@ public class SolarController {
         return growattCredentialsService.getCredentials().getPlantId();
     }
 
-    private static PowerPoint toPowerPoint(PowerPointDto dto) {
-        return new PowerPoint(dto.time, dto.power != null ? BigDecimal.valueOf(dto.power) : null);
+    private static PowerPoint toPowerPoint(MixDataPointDto dto) {
+        return new PowerPoint(dto.time, dto.ppv != null ? BigDecimal.valueOf(dto.ppv) : null);
     }
 
     private static BigDecimal parseBigDecimal(String value) {

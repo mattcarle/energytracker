@@ -11,8 +11,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
 import java.net.URI;
@@ -31,6 +34,11 @@ public class GrowattApiService {
     // time_unit=day plant/energy call - a wider request fails with error_code 10004. Confirmed
     // live: a 28-day request failed, a 5-day request succeeded.
     private static final int MAX_DAY_QUERY_RANGE = 7;
+
+    // mix_data's own page size cap is 100; 5 pages comfortably covers a full day's ~288
+    // 5-minute readings with room to spare.
+    private static final int MIX_DATA_PER_PAGE = 100;
+    private static final int MIX_DATA_MAX_PAGES = 5;
 
     @Autowired
     private GrowattConfig growattConfig;
@@ -54,10 +62,42 @@ public class GrowattApiService {
         return get(url, PlantDataResponse.class);
     }
 
-    public PlantPowerResponse fetchPlantPower(String plantId, LocalDate date) {
-        String url = String.format("%s/plant/power?plant_id=%s&date=%s",
-                growattConfig.getBaseUrl(), plantId, DATE_FORMAT.format(date));
-        return get(url, PlantPowerResponse.class);
+    public DeviceListResponse fetchDeviceList(String plantId) {
+        String url = String.format("%s/device/list?plant_id=%s", growattConfig.getBaseUrl(), plantId);
+        return get(url, DeviceListResponse.class);
+    }
+
+    // The plant-level power endpoint (plant/power) reports inverter AC output, not isolated PV -
+    // it stays nonzero after dark whenever the battery is discharging, which is what surfaced
+    // this in the first place (see the session's investigation: comparing plant/power against
+    // this device-level call's own `ppv` field on real data showed plant/power tracking
+    // pac/battery activity, while ppv correctly reads exactly 0 overnight). mix_data has no
+    // `next`-URL pagination like Octopus, just a page/perpage the caller drives - looped here
+    // until a short page or the reported count says there's no more for the day.
+    public List<MixDataPointDto> fetchMixData(String deviceSn, LocalDate date) {
+        List<MixDataPointDto> allResults = new ArrayList<>();
+        String dateStr = DATE_FORMAT.format(date);
+        String url = growattConfig.getBaseUrl() + "/device/mix/mix_data";
+
+        for (int page = 1; page <= MIX_DATA_MAX_PAGES; page++) {
+            MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
+            params.add("mix_sn", deviceSn);
+            params.add("start_date", dateStr);
+            params.add("end_date", dateStr);
+            params.add("perpage", String.valueOf(MIX_DATA_PER_PAGE));
+            params.add("page", String.valueOf(page));
+
+            MixDataResponse response = post(url, params, MixDataResponse.class);
+            if (response == null || response.data == null || response.data.datas == null) {
+                return page == 1 ? null : allResults;
+            }
+            allResults.addAll(response.data.datas);
+            if (response.data.datas.size() < MIX_DATA_PER_PAGE || allResults.size() >= response.data.count) {
+                break;
+            }
+        }
+
+        return allResults;
     }
 
     // Chunks the requested range into <= MAX_DAY_QUERY_RANGE-day windows (the API enforces this
@@ -135,6 +175,46 @@ public class GrowattApiService {
         }
     }
 
+    // Device-level endpoints (mix_data, mix_last_data, etc.) are POSTed with form fields rather
+    // than GET query params - otherwise identical error/parsing handling to get() above.
+    private <T extends GrowattEnvelope> T post(String url, MultiValueMap<String, String> formParams, Class<T> responseType) {
+        GrowattCredentials credentials = growattCredentialsService.getCredentials();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("token", credentials.getApiToken());
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(formParams, headers);
+
+        try {
+            long startTime = System.currentTimeMillis();
+            ResponseEntity<String> response = restTemplate.postForEntity(URI.create(url), entity, String.class);
+            long durationMs = System.currentTimeMillis() - startTime;
+            logger.info("POST {} completed in {} ms", url, durationMs);
+
+            if (!response.getStatusCode().is2xxSuccessful()) {
+                logger.error("API error from {}: {} {}", url, response.getStatusCode(), response.getBody());
+                return null;
+            }
+
+            T parsed;
+            try {
+                parsed = objectMapper.readValue(response.getBody(), responseType);
+            } catch (JsonProcessingException e) {
+                logger.error("Failed to parse response from {}: {}", url, e.getMessage(), e);
+                return null;
+            }
+
+            if (parsed.error_code != 0) {
+                logger.error("Growatt API error from {}: error_code={} error_msg={}", url, parsed.error_code, parsed.error_msg);
+                return null;
+            }
+            return parsed;
+        } catch (Exception e) {
+            logger.error("Failed to post to {}: {}", url, e.getMessage(), e);
+            return null;
+        }
+    }
+
     // Every Growatt v1 response wraps its payload the same way: {"error_msg":"","data":{...},"error_code":0}.
     // ignoreUnknown=true on every one of these DTOs: Growatt's real responses carry dozens of
     // undocumented fields per object (confirmed live - e.g. plant/list returns country, latitude,
@@ -180,20 +260,40 @@ public class GrowattApiService {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class PlantPowerResponse extends GrowattEnvelope {
-        public PlantPowerData data;
+    public static class DeviceListResponse extends GrowattEnvelope {
+        public DeviceListData data;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class PlantPowerData {
+    public static class DeviceListData {
+        public List<DeviceDto> devices;
         public int count;
-        public List<PowerPointDto> powers;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class PowerPointDto {
+    public static class DeviceDto {
+        public String device_sn;
+        public int type;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class MixDataResponse extends GrowattEnvelope {
+        public MixDataData data;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class MixDataData {
+        public List<MixDataPointDto> datas;
+        public int count;
+    }
+
+    // A real mix_data point carries roughly 150 device/BMS telemetry fields (confirmed live) -
+    // only `time` and `ppv` (actual PV panel power, zero overnight - unlike plant/power's `pac`,
+    // which mixes in battery activity) are needed here.
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class MixDataPointDto {
         public String time;
-        public Double power;
+        public Double ppv;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

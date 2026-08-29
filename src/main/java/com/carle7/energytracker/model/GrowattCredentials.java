@@ -24,6 +24,9 @@ public class GrowattCredentials {
     @Column(name = "plant_id")
     private String plantId;
 
+    @Column(name = "device_sn")
+    private String deviceSn;
+
     @Column(name = "install_date")
     private LocalDate installDate;
 
@@ -66,6 +69,14 @@ public class GrowattCredentials {
 
     public void setPlantId(String plantId) {
         this.plantId = plantId;
+    }
+
+    public String getDeviceSn() {
+        return deviceSn;
+    }
+
+    public void setDeviceSn(String deviceSn) {
+        this.deviceSn = deviceSn;
     }
 
     public LocalDate getInstallDate() {

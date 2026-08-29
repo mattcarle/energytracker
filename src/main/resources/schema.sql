@@ -137,10 +137,19 @@ CREATE TABLE IF NOT EXISTS GROWATT_CREDENTIALS (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     api_token VARCHAR(255) NOT NULL,
     plant_id VARCHAR(50),
+    -- The device (inverter) serial number within the plant - needed for the device-level
+    -- mix_data call the live hourly power curve uses, since the plant-level power endpoint
+    -- turned out to report inverter AC output (mixed with battery activity) rather than
+    -- isolated PV. Resolved and stored alongside plant_id (see GrowattService.loadPlant).
+    device_sn VARCHAR(50),
     install_date DATE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Added after GROWATT_CREDENTIALS already shipped - ADD COLUMN IF NOT EXISTS keeps this
+-- idempotent for databases created before device_sn existed.
+ALTER TABLE GROWATT_CREDENTIALS ADD COLUMN IF NOT EXISTS device_sn VARCHAR(50);
 
 -- Daily solar generation totals (kWh), backfilled from Growatt's plant/energy endpoint.
 -- plant_id is included even though there's only one plant today, so a future second plant's

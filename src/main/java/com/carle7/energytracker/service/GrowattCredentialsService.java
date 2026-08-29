@@ -39,10 +39,11 @@ public class GrowattCredentialsService {
     }
 
     @Transactional
-    public GrowattCredentials savePlantDetails(String plantId, LocalDate installDate) {
+    public GrowattCredentials savePlantDetails(String plantId, LocalDate installDate, String deviceSn) {
         GrowattCredentials credentials = getCredentials();
         credentials.setPlantId(plantId);
         credentials.setInstallDate(installDate);
+        credentials.setDeviceSn(deviceSn);
         credentials.setUpdatedAt(LocalDateTime.now());
         return growattCredentialsRepository.save(credentials);
     }

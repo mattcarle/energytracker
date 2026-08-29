@@ -5,9 +5,9 @@ import com.carle7.energytracker.model.SolarGeneration;
 import com.carle7.energytracker.repository.SolarDateRangeProjection;
 import com.carle7.energytracker.repository.SolarGenerationRepository;
 import com.carle7.energytracker.service.GrowattApiService.EnergyPointDto;
+import com.carle7.energytracker.service.GrowattApiService.MixDataPointDto;
 import com.carle7.energytracker.service.GrowattApiService.PlantDataDto;
 import com.carle7.energytracker.service.GrowattApiService.PlantDto;
-import com.carle7.energytracker.service.GrowattApiService.PlantPowerData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,7 +54,21 @@ public class GrowattService {
                     .map(d -> LocalDate.parse(d, DateTimeFormatter.ISO_LOCAL_DATE))
                     .orElse(null);
 
-            growattCredentialsService.savePlantDetails(plantId, installDate);
+            // The device serial number is needed for the live power curve's device-level call
+            // (see getLivePowerCurve) - resolved here too so it's ready as soon as the plant
+            // itself is. A device-list failure doesn't fail the whole plant load: the daily kWh
+            // backfill (which only needs plantId) still works without it, only the live curve
+            // would be unavailable until this succeeds on a later call.
+            String deviceSn = null;
+            GrowattApiService.DeviceListResponse deviceListResponse = growattApiService.fetchDeviceList(plantId);
+            if (deviceListResponse != null && deviceListResponse.data != null && deviceListResponse.data.devices != null
+                    && !deviceListResponse.data.devices.isEmpty()) {
+                deviceSn = deviceListResponse.data.devices.get(0).device_sn;
+            } else {
+                logger.warn("Could not resolve a device serial number for plant {}; the live power curve will be unavailable", plantId);
+            }
+
+            growattCredentialsService.savePlantDetails(plantId, installDate, deviceSn);
 
             result.setPlantId(plantId);
             result.setPlantName(plant.name);
@@ -153,10 +167,25 @@ public class GrowattService {
         return result;
     }
 
-    public PlantPowerData getLivePowerCurve(LocalDate date) {
-        String plantId = growattCredentialsService.getCredentials().getPlantId();
-        GrowattApiService.PlantPowerResponse response = growattApiService.fetchPlantPower(plantId, date);
-        return response != null ? response.data : null;
+    // Device-level (not plant-level) - see fetchMixData's comment for why: the plant-level power
+    // endpoint reports inverter AC output rather than isolated PV. Lazily resolves deviceSn via
+    // loadPlant() the same way loadSolarData lazily resolves plantId, for credentials saved
+    // before this device-level call existed.
+    public List<MixDataPointDto> getLivePowerCurve(LocalDate date) {
+        GrowattCredentials credentials = growattCredentialsService.getCredentials();
+        String deviceSn = credentials.getDeviceSn();
+        if (deviceSn == null) {
+            PlantLoadResult plantLoad = loadPlant();
+            if (plantLoad.getError() != null) {
+                logger.error("Could not resolve Growatt device: {}", plantLoad.getError());
+                return null;
+            }
+            deviceSn = growattCredentialsService.getCredentials().getDeviceSn();
+            if (deviceSn == null) {
+                return null;
+            }
+        }
+        return growattApiService.fetchMixData(deviceSn, date);
     }
 
     public PlantDataDto getLiveStatus() {
