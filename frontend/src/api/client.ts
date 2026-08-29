@@ -161,10 +161,11 @@ export function setupAdmin(
   password: string,
   octopusAccountNumber: string,
   octopusAuthToken: string,
+  growattApiToken?: string,
 ): Promise<SetupResult> {
   return request('/api/auth/setup', {
     method: 'POST',
-    body: JSON.stringify({ password, octopusAccountNumber, octopusAuthToken }),
+    body: JSON.stringify({ password, octopusAccountNumber, octopusAuthToken, growattApiToken }),
   })
 }
 

@@ -74,3 +74,19 @@
   opacity: 0.6;
   cursor: default;
 }
+
+.auth-form__secondary {
+  font: inherit;
+  font-size: 14px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.auth-form__secondary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

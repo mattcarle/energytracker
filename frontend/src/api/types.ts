@@ -163,11 +163,26 @@ export interface UsageLoadResult {
   error: string | null
 }
 
+export interface PlantLoadResult {
+  plantId: string | null
+  plantName: string | null
+  installDate: string | null
+  error: string | null
+}
+
+export interface SolarLoadResult {
+  dayCount: number
+  error: string | null
+}
+
 export interface SetupResult {
   user: AuthUser
   accountLoad: AccountLoadResult
   usageLoad: UsageLoadResult
   integrityReport: DataIntegrityReport
+  // Both null when the Growatt step of the wizard was skipped.
+  plantLoad: PlantLoadResult | null
+  solarLoad: SolarLoadResult | null
 }
 
 export interface DataIntegrityGap {

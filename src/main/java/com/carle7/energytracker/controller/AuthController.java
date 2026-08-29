@@ -10,6 +10,7 @@ import com.carle7.energytracker.dto.SetupStatusResponse;
 import com.carle7.energytracker.dto.UserResponse;
 import com.carle7.energytracker.security.UserPrincipal;
 import com.carle7.energytracker.service.DataIntegrityService;
+import com.carle7.energytracker.service.GrowattService;
 import com.carle7.energytracker.service.OctopusService;
 import com.carle7.energytracker.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -37,16 +38,19 @@ public class AuthController {
 
     private final UserService userService;
     private final OctopusService octopusService;
+    private final GrowattService growattService;
     private final DataIntegrityService dataIntegrityService;
     private final AuthenticationManager authenticationManager;
     private final SecurityContextRepository securityContextRepository;
 
     public AuthController(UserService userService, OctopusService octopusService,
+                           GrowattService growattService,
                            DataIntegrityService dataIntegrityService,
                            AuthenticationManager authenticationManager,
                            SecurityContextRepository securityContextRepository) {
         this.userService = userService;
         this.octopusService = octopusService;
+        this.growattService = growattService;
         this.dataIntegrityService = dataIntegrityService;
         this.authenticationManager = authenticationManager;
         this.securityContextRepository = securityContextRepository;
@@ -60,7 +64,8 @@ public class AuthController {
     @PostMapping("/setup")
     public ResponseEntity<?> setup(@RequestBody SetupRequest request, HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
         try {
-            userService.setupAdmin(request.getPassword(), request.getOctopusAccountNumber(), request.getOctopusAuthToken());
+            userService.setupAdmin(request.getPassword(), request.getOctopusAccountNumber(),
+                    request.getOctopusAuthToken(), request.getGrowattApiToken());
         } catch (IllegalStateException | IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
         }
@@ -71,7 +76,19 @@ public class AuthController {
         OctopusService.UsageLoadResult usageLoad = octopusService.loadUsageData(false);
         DataIntegrityReport integrityReport = dataIntegrityService.checkDataIntegrity();
 
-        return ResponseEntity.ok(new SetupResponse(loginResponse.getBody(), accountLoad, usageLoad, integrityReport));
+        // Both stay null when the wizard's Growatt step was skipped (no token submitted) - a
+        // solar load is only attempted once the plant itself resolved successfully, same as the
+        // standalone GrowattSettingsController flow.
+        GrowattService.PlantLoadResult plantLoad = null;
+        GrowattService.SolarLoadResult solarLoad = null;
+        if (request.getGrowattApiToken() != null && !request.getGrowattApiToken().isBlank()) {
+            plantLoad = growattService.loadPlant();
+            if (plantLoad.getError() == null) {
+                solarLoad = growattService.loadSolarData(false);
+            }
+        }
+
+        return ResponseEntity.ok(new SetupResponse(loginResponse.getBody(), accountLoad, usageLoad, integrityReport, plantLoad, solarLoad));
     }
 
     @PostMapping("/login")

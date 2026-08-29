@@ -5,6 +5,9 @@ public class SetupRequest {
     private String password;
     private String octopusAccountNumber;
     private String octopusAuthToken;
+    // Optional - the wizard's Growatt step can be skipped, in which case this is null/blank and
+    // no Growatt credentials are saved.
+    private String growattApiToken;
 
     public String getPassword() {
         return password;
@@ -28,5 +31,13 @@ public class SetupRequest {
 
     public void setOctopusAuthToken(String octopusAuthToken) {
         this.octopusAuthToken = octopusAuthToken;
+    }
+
+    public String getGrowattApiToken() {
+        return growattApiToken;
+    }
+
+    public void setGrowattApiToken(String growattApiToken) {
+        this.growattApiToken = growattApiToken;
     }
 }

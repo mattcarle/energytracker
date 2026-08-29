@@ -10,17 +10,21 @@ interface SetupProps {
   onComplete: (user: AuthUser) => void
 }
 
+type Step = 'account' | 'growatt'
+
 export default function Setup({ onComplete }: SetupProps) {
+  const [step, setStep] = useState<Step>('account')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [octopusAccountNumber, setOctopusAccountNumber] = useState('')
   const [octopusAuthToken, setOctopusAuthToken] = useState('')
+  const [growattApiToken, setGrowattApiToken] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<SetupResult | null>(null)
   const [showIntegrityReport, setShowIntegrityReport] = useState(false)
 
-  function handleSubmit(event: FormEvent) {
+  function handleAccountStepSubmit(event: FormEvent) {
     event.preventDefault()
     setError(null)
 
@@ -29,8 +33,16 @@ export default function Setup({ onComplete }: SetupProps) {
       return
     }
 
+    setStep('growatt')
+  }
+
+  // Shared by both the "Finish setup" submit and "Skip" - skip just forces an empty token so
+  // whatever's still sitting in the field (if the user typed something then changed their mind)
+  // is never sent.
+  function submit(apiToken: string) {
+    setError(null)
     setSubmitting(true)
-    setupAdmin(password, octopusAccountNumber, octopusAuthToken)
+    setupAdmin(password, octopusAccountNumber, octopusAuthToken, apiToken || undefined)
       .then((setupResult) => {
         setResult(setupResult)
         setShowIntegrityReport(true)
@@ -39,12 +51,24 @@ export default function Setup({ onComplete }: SetupProps) {
       .finally(() => setSubmitting(false))
   }
 
+  function handleGrowattStepSubmit(event: FormEvent) {
+    event.preventDefault()
+    submit(growattApiToken)
+  }
+
+  function handleSkip() {
+    submit('')
+  }
+
   if (result) {
     return (
       <div className="auth-screen">
         <div className="auth-screen__card">
           <h1 className="auth-screen__title">You&apos;re all set</h1>
-          <p className="auth-screen__subtitle">Admin account created and Octopus Energy connected.</p>
+          <p className="auth-screen__subtitle">
+            Admin account created
+            {result.plantLoad ? ', Octopus Energy connected, and Growatt solar connected.' : ' and Octopus Energy connected.'}
+          </p>
           <p>
             {result.accountLoad.error
               ? `Loading account data failed: ${result.accountLoad.error}`
@@ -55,6 +79,18 @@ export default function Setup({ onComplete }: SetupProps) {
               ? `Loading usage data failed: ${result.usageLoad.error}`
               : `Loaded ${result.usageLoad.usageCount} usage record(s).`}
           </p>
+          {result.plantLoad && (
+            <p>
+              {result.plantLoad.error
+                ? `Connecting to Growatt failed: ${result.plantLoad.error}`
+                : `Connected to plant "${result.plantLoad.plantName}".` +
+                  (result.solarLoad
+                    ? result.solarLoad.error
+                      ? ` Loading solar data failed: ${result.solarLoad.error}`
+                      : ` Loaded ${result.solarLoad.dayCount} day(s) of solar generation.`
+                    : '')}
+            </p>
+          )}
           <button type="button" className="auth-form__submit" onClick={() => onComplete(result.user)}>
             Continue
           </button>
@@ -81,6 +117,52 @@ export default function Setup({ onComplete }: SetupProps) {
     )
   }
 
+  if (step === 'growatt') {
+    return (
+      <div className="auth-screen">
+        <div className="auth-screen__card">
+          <h1 className="auth-screen__title">Connect solar (optional)</h1>
+          <p className="auth-screen__subtitle">
+            If you have a Growatt solar inverter, enter its API token to track generation
+            alongside your usage. You can skip this and set it up later from Admin settings.
+          </p>
+          <form className="auth-form" onSubmit={handleGrowattStepSubmit}>
+            <label className="auth-form__field">
+              <span>Growatt API token</span>
+              <PasswordInput
+                value={growattApiToken}
+                onChange={setGrowattApiToken}
+                placeholder="Optional"
+                autoComplete="off"
+                autoFocus
+              />
+            </label>
+            {error && <p className="auth-form__error">{error}</p>}
+            <button type="submit" className="auth-form__submit" disabled={submitting}>
+              {submitting ? 'Finishing…' : 'Finish setup'}
+            </button>
+            <button
+              type="button"
+              className="auth-form__secondary"
+              onClick={handleSkip}
+              disabled={submitting}
+            >
+              Skip for now
+            </button>
+            <button
+              type="button"
+              className="auth-form__secondary"
+              onClick={() => setStep('account')}
+              disabled={submitting}
+            >
+              Back
+            </button>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="auth-screen">
       <div className="auth-screen__card">
@@ -89,7 +171,7 @@ export default function Setup({ onComplete }: SetupProps) {
           This is the first time the app has run. Choose a password for the admin account
           (username: <code>admin</code>) and connect your Octopus Energy account.
         </p>
-        <form className="auth-form" onSubmit={handleSubmit}>
+        <form className="auth-form" onSubmit={handleAccountStepSubmit}>
           {/* Fixed username, with no visible input for it - this gives the browser's password
               manager something to associate the admin password with, so it doesn't have to ask
               the user to fill in a username by hand when offering to save it. */}
@@ -144,8 +226,8 @@ export default function Setup({ onComplete }: SetupProps) {
             />
           </label>
           {error && <p className="auth-form__error">{error}</p>}
-          <button type="submit" className="auth-form__submit" disabled={submitting}>
-            {submitting ? 'Setting up…' : 'Create admin account'}
+          <button type="submit" className="auth-form__submit">
+            Next
           </button>
         </form>
       </div>

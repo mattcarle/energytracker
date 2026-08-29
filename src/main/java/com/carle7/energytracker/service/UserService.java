@@ -17,12 +17,15 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final OctopusCredentialsService octopusCredentialsService;
+    private final GrowattCredentialsService growattCredentialsService;
 
     public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder,
-                        OctopusCredentialsService octopusCredentialsService) {
+                        OctopusCredentialsService octopusCredentialsService,
+                        GrowattCredentialsService growattCredentialsService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.octopusCredentialsService = octopusCredentialsService;
+        this.growattCredentialsService = growattCredentialsService;
     }
 
     public boolean isSetupRequired() {
@@ -33,10 +36,11 @@ public class UserService {
      * Creates the admin account and stores the Octopus Energy API credentials in one
      * transaction, so a bad account number/token can't leave setup half-done and
      * permanently unreachable (setup-status flips to "not required" the moment the
-     * admin row exists).
+     * admin row exists). growattApiToken is optional (the wizard's Growatt step can be
+     * skipped) - blank/null means no Growatt credentials are saved, not an error.
      */
     @Transactional
-    public User setupAdmin(String password, String octopusAccountNumber, String octopusAuthToken) {
+    public User setupAdmin(String password, String octopusAccountNumber, String octopusAuthToken, String growattApiToken) {
         if (!isSetupRequired()) {
             throw new IllegalStateException("Admin account has already been set up");
         }
@@ -44,6 +48,9 @@ public class UserService {
         User admin = new User(ADMIN_USERNAME, passwordEncoder.encode(password), User.Role.ADMIN, false);
         userRepository.save(admin);
         octopusCredentialsService.saveCredentials(octopusAccountNumber, octopusAuthToken);
+        if (growattApiToken != null && !growattApiToken.isBlank()) {
+            growattCredentialsService.saveToken(growattApiToken);
+        }
         return admin;
     }
 
