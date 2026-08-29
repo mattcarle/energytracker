@@ -130,7 +130,33 @@ CREATE TABLE IF NOT EXISTS OCTOPUS_CREDENTIALS (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Single-row table: the app talks to exactly one Growatt account/plant. plant_id/install_date
+-- start null and are filled in from the Growatt API (plant/list) the first time the token is
+-- saved - see GrowattService.loadPlant.
+CREATE TABLE IF NOT EXISTS GROWATT_CREDENTIALS (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    api_token VARCHAR(255) NOT NULL,
+    plant_id VARCHAR(50),
+    install_date DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Daily solar generation totals (kWh), backfilled from Growatt's plant/energy endpoint.
+-- plant_id is included even though there's only one plant today, so a future second plant's
+-- backfill resume point stays independent rather than sharing one cutover (see
+-- GrowattGenerationRepository.findDateRangeByPlantId / the a1ce2d9 lesson referenced there).
+CREATE TABLE IF NOT EXISTS SOLAR_GENERATION (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    plant_id VARCHAR(50) NOT NULL,
+    generation_date DATE NOT NULL,
+    energy_kwh DECIMAL(10, 4) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (plant_id, generation_date)
+);
+
 CREATE INDEX IF NOT EXISTS idx_agreement_tariff_code ON AGREEMENT(tariff_code);
+CREATE INDEX IF NOT EXISTS idx_solar_generation_date ON SOLAR_GENERATION(generation_date);
 CREATE INDEX IF NOT EXISTS idx_day_and_night_tariff_tariff_code ON DAY_AND_NIGHT_TARIFF(tariff_code);
 CREATE INDEX IF NOT EXISTS idx_unit_rate_by_half_hour_valid_from ON UNIT_RATE_BY_HALF_HOUR(valid_from);
 CREATE INDEX IF NOT EXISTS idx_standing_charge_by_day_valid_from ON STANDING_CHARGE_BY_DAY(valid_from);

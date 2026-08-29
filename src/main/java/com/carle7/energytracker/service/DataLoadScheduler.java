@@ -20,8 +20,17 @@ public class DataLoadScheduler {
     @Autowired
     private OctopusCredentialsService octopusCredentialsService;
 
+    @Autowired
+    private GrowattService growattService;
+
+    @Autowired
+    private GrowattCredentialsService growattCredentialsService;
+
     @Value("${app.startup-usage-load.enabled:true}")
     private boolean startupUsageLoadEnabled;
+
+    @Value("${app.startup-solar-load.enabled:true}")
+    private boolean startupSolarLoadEnabled;
 
     // First-run setup already performs the initial account+usage load itself (see
     // AuthController#setup), so this is only reached on subsequent restarts, where it catches up
@@ -65,5 +74,41 @@ public class DataLoadScheduler {
         }
 
         logger.info("Scheduled daily data load complete");
+    }
+
+    // Same startup-catchup role as loadLatestUsageOnStartup, but gated by Growatt's own
+    // (independent) credentials state - kept separate rather than folded into that method so one
+    // integration's missing credentials never block the other's catch-up load.
+    @EventListener(ApplicationReadyEvent.class)
+    public void loadLatestSolarDataOnStartup() {
+        if (!startupSolarLoadEnabled) {
+            logger.info("Skipping startup solar load (app.startup-solar-load.enabled=false)");
+            return;
+        }
+        if (!growattCredentialsService.hasCredentials()) {
+            return;
+        }
+        logger.info("Loading latest solar generation data on startup");
+        GrowattService.SolarLoadResult result = growattService.loadSolarData(false);
+        if (result.getError() != null) {
+            logger.error("Startup solar load failed: {}", result.getError());
+        } else {
+            logger.info("Startup solar load complete: {} day(s) loaded", result.getDayCount());
+        }
+    }
+
+    // Solar totals for "today" only firm up once the inverter has finished reporting for the
+    // day - runs alongside the existing 02:00 Octopus job so one nightly window covers both,
+    // but kept as its own method (not merged into loadLatestDataDaily) since it has an
+    // independent credentials gate that shouldn't couple to Octopus's.
+    @Scheduled(cron = "0 0 2 * * *", zone = "Europe/London")
+    public void loadLatestSolarDataDaily() {
+        if (!growattCredentialsService.hasCredentials()) {
+            return;
+        }
+        GrowattService.SolarLoadResult result = growattService.loadSolarData(false);
+        if (result.getError() != null) {
+            logger.error("Scheduled solar load failed: {}", result.getError());
+        }
     }
 }
