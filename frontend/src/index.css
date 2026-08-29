@@ -18,8 +18,8 @@
   --chart-mpan-1-offpeak: #c3d7fc;
   --chart-mpan-2-offpeak: #eba177;
   --chart-mpan-3-offpeak: #69c0ae;
-  --chart-stdchg: #8c8c8c;
-  --chart-solar: #c9a227;
+  --chart-stdchg: #c9a227;
+  --chart-solar: #1e7a34;
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 
@@ -59,8 +59,8 @@
     --chart-mpan-1-offpeak: #c7ddff;
     --chart-mpan-2-offpeak: #ffc6a0;
     --chart-mpan-3-offpeak: #9ee8d8;
-    --chart-stdchg: #a3a3ad;
-    --chart-solar: #f0c14b;
+    --chart-stdchg: #f0c14b;
+    --chart-solar: #3fae53;
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
   }
