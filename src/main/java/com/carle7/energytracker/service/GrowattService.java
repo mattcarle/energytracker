@@ -117,20 +117,34 @@ public class GrowattService {
                 return result;
             }
 
+            // Look up every existing row for the fetched range in one query, rather than once per
+            // day inside the loop below: a find() per iteration forces Hibernate to auto-flush
+            // first, and that flush dirty-checks the whole persistence context accumulated so
+            // far - O(n) growing on each of up to ~1000 iterations is O(n^2) overall, which was
+            // observed hanging for minutes on a real backfill. One bulk fetch + one final
+            // saveAll avoids any query-triggered auto-flush inside the loop.
+            Map<LocalDate, SolarGeneration> existingByDate = solarGenerationRepository
+                    .findByPlantIdAndGenerationDateGreaterThanEqualAndGenerationDateLessThanOrderByGenerationDateAsc(
+                            resolvedPlantId, periodFrom, periodTo.plusDays(1))
+                    .stream()
+                    .collect(java.util.stream.Collectors.toMap(SolarGeneration::getGenerationDate, java.util.function.Function.identity()));
+
+            List<SolarGeneration> toSave = new java.util.ArrayList<>();
             int dayCount = 0;
             for (EnergyPointDto point : energyPoints) {
                 LocalDate date = LocalDate.parse(String.valueOf(point.date), DateTimeFormatter.ISO_LOCAL_DATE);
                 BigDecimal kwh = new BigDecimal(point.energy);
 
-                SolarGeneration toSave = solarGenerationRepository.findByPlantIdAndGenerationDate(resolvedPlantId, date)
-                        .map(existing -> {
-                            existing.setEnergyKwh(kwh);
-                            return existing;
-                        })
-                        .orElseGet(() -> new SolarGeneration(resolvedPlantId, date, kwh));
-                solarGenerationRepository.save(toSave);
+                SolarGeneration existing = existingByDate.get(date);
+                if (existing != null) {
+                    existing.setEnergyKwh(kwh);
+                    toSave.add(existing);
+                } else {
+                    toSave.add(new SolarGeneration(resolvedPlantId, date, kwh));
+                }
                 dayCount++;
             }
+            solarGenerationRepository.saveAll(toSave);
             result.setDayCount(dayCount);
         } catch (Exception e) {
             logger.error("Failed to load solar generation data: {}", e.getMessage(), e);
