@@ -394,32 +394,34 @@ public class OctopusService {
                 usageRepository.deleteAllInBatch();
             }
 
-            // Re-fetch from the start of the latest day we have data for (local calendar day,
-            // not just the half-hour after the last interval), rather than resuming right after
-            // it - the most recent day's readings are often still incomplete (or later revised)
-            // when first loaded, so this re-pulls and overwrites the whole day rather than only
-            // ever appending to it. intervalFrom (not intervalTo) locates that day, since the
-            // last interval's intervalTo can itself already be local midnight of the next day.
-            LocalDateTime periodFrom = usageRepository.findFirstByOrderByIntervalToDesc()
-                    .map(usage -> londonMidnightUtc(londonDateOf(usage.getIntervalFrom())))
-                    .or(() -> agreementRepository.findFirstByOrderByValidFromAsc().map(Agreement::getValidFrom))
-                    .orElse(null);
-
-            if (periodFrom == null) {
-                logger.warn("No existing usage data and no agreements found; skipping usage load");
-                return result;
-            }
+            // Octopus's data for electricity and gas routinely lands with different amounts of
+            // lag, so the resume point has to be worked out per mpan rather than once globally -
+            // otherwise a single shared cutover point (anchored to whichever meter happens to be
+            // furthest along) permanently skips the backlog of whichever meter is behind it. Each
+            // meter resumes from the half-hour immediately after its own latest stored reading
+            // (MAX(interval_to)), not the start of that reading's calendar day, since Octopus
+            // typically hasn't published a full day's data yet by the time this runs and
+            // re-pulling from the day's start would just re-request periods it already has.
+            Map<String, LocalDateTime> latestByMpan = usageRepository.findDateRangeByMpan().stream()
+                    .collect(java.util.stream.Collectors.toMap(
+                            UsageDateRangeProjection::getMpan, UsageDateRangeProjection::getLatest));
 
             LocalDateTime periodTo = LocalDateTime.now();
-            if (!periodFrom.isBefore(periodTo)) {
-                return result;
-            }
 
             int usageCount = 0;
             for (MeterPoint meterPoint : meterPointRepository.findAll()) {
-                // Clears out whatever's on record for the window being re-fetched, so the
-                // replacement data below can't end up duplicating it.
-                usageRepository.deleteByMpanAndIntervalFromGreaterThanEqual(meterPoint.getMpan(), periodFrom);
+                LocalDateTime periodFrom = ofNullable(latestByMpan.get(meterPoint.getMpan()))
+                        .or(() -> agreementRepository.findByMeterPointIdOrderByValidFrom(meterPoint.getId())
+                                .stream().findFirst().map(Agreement::getValidFrom))
+                        .orElse(null);
+
+                if (periodFrom == null) {
+                    logger.warn("No existing usage data and no agreements found for mpan {}; skipping", meterPoint.getMpan());
+                    continue;
+                }
+                if (!periodFrom.isBefore(periodTo)) {
+                    continue;
+                }
 
                 for (Meter meter : meterRepository.findByMeterPointId(meterPoint.getId())) {
                     ConsumptionResponse response = octopusApiService.fetchConsumptionData(

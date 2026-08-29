@@ -7,6 +7,7 @@ import com.carle7.energytracker.repository.AgreementRepository;
 import com.carle7.energytracker.repository.MeterPointRepository;
 import com.carle7.energytracker.repository.MeterRepository;
 import com.carle7.energytracker.repository.UnitRateByHalfHourRepository;
+import com.carle7.energytracker.repository.UsageDateRangeProjection;
 import com.carle7.energytracker.repository.UsageRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -67,10 +69,11 @@ class OctopusServiceGasConversionTest {
         gasMeterPoint.setId(1L);
         Meter gasMeter = new Meter("GAS-SERIAL", 1L);
 
-        Usage priorUsage = new Usage(LocalDateTime.parse("2026-01-01T00:00:00"), LocalDateTime.parse("2026-01-01T00:30:00"),
-                java.math.BigDecimal.ONE, "1234567890");
+        UsageDateRangeProjection dateRange = mock(UsageDateRangeProjection.class);
+        when(dateRange.getMpan()).thenReturn("1234567890");
+        when(dateRange.getLatest()).thenReturn(LocalDateTime.parse("2026-01-01T00:30:00"));
 
-        when(usageRepository.findFirstByOrderByIntervalToDesc()).thenReturn(Optional.of(priorUsage));
+        when(usageRepository.findDateRangeByMpan()).thenReturn(List.of(dateRange));
         when(meterPointRepository.findAll()).thenReturn(List.of(gasMeterPoint));
         when(meterRepository.findByMeterPointId(1L)).thenReturn(List.of(gasMeter));
         when(octopusApiService.fetchConsumptionData(eq("GAS"), eq("1234567890"), eq("GAS-SERIAL"), any(), any()))
@@ -94,10 +97,11 @@ class OctopusServiceGasConversionTest {
         elecMeterPoint.setId(2L);
         Meter elecMeter = new Meter("ELEC-SERIAL", 2L);
 
-        Usage priorUsage = new Usage(LocalDateTime.parse("2026-01-01T00:00:00"), LocalDateTime.parse("2026-01-01T00:30:00"),
-                java.math.BigDecimal.ONE, "2000016292581");
+        UsageDateRangeProjection dateRange = mock(UsageDateRangeProjection.class);
+        when(dateRange.getMpan()).thenReturn("2000016292581");
+        when(dateRange.getLatest()).thenReturn(LocalDateTime.parse("2026-01-01T00:30:00"));
 
-        when(usageRepository.findFirstByOrderByIntervalToDesc()).thenReturn(Optional.of(priorUsage));
+        when(usageRepository.findDateRangeByMpan()).thenReturn(List.of(dateRange));
         when(meterPointRepository.findAll()).thenReturn(List.of(elecMeterPoint));
         when(meterRepository.findByMeterPointId(2L)).thenReturn(List.of(elecMeter));
         when(octopusApiService.fetchConsumptionData(eq("ELEC"), eq("2000016292581"), eq("ELEC-SERIAL"), any(), any()))

@@ -7,20 +7,10 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 
 @Repository
 public interface UsageRepository extends JpaRepository<Usage, Long>, UsageRepositoryCustom {
-
-    Optional<Usage> findFirstByOrderByIntervalToDesc();
-
-    // Called before re-inserting a freshly-fetched window of consumption data, so re-loading a
-    // day already on record (see OctopusService#loadUsageData) replaces it rather than
-    // duplicating it.
-    @Transactional
-    void deleteByMpanAndIntervalFromGreaterThanEqual(String mpan, LocalDateTime intervalFrom);
 
     // Called at the start of every data integrity check (see DataIntegrityService), so gap
     // detection runs against real readings only, and any placeholder rows it previously
