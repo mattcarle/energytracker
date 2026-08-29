@@ -7,6 +7,7 @@ import ChangePassword from './pages/ChangePassword'
 import ChangePasswordSettings from './pages/ChangePasswordSettings'
 import Login from './pages/Login'
 import ManageData from './pages/ManageData'
+import ManageGrowattData from './pages/ManageGrowattData'
 import ManageUsers from './pages/ManageUsers'
 import Setup from './pages/Setup'
 import UsageByDay from './pages/UsageByDay'
@@ -16,7 +17,7 @@ import UsageByYear from './pages/UsageByYear'
 import './App.css'
 
 type UsagePage = 'usage-day' | 'usage-week' | 'usage-month' | 'usage-year'
-type AdminPage = 'manage-data' | 'manage-users' | 'change-password-settings'
+type AdminPage = 'manage-data' | 'manage-growatt-data' | 'manage-users' | 'change-password-settings'
 type Page = UsagePage | AdminPage
 type AuthPhase = 'loading' | 'setup' | 'login' | 'change-password' | 'authenticated'
 
@@ -121,7 +122,10 @@ function App() {
   // than a nav click, and needs to stick on mobile too.
   useEffect(() => {
     if (needsDayAndNightSetup) return
-    if (isMobile && (page === 'manage-data' || page === 'manage-users' || page === 'change-password-settings')) {
+    if (
+      isMobile &&
+      (page === 'manage-data' || page === 'manage-growatt-data' || page === 'manage-users' || page === 'change-password-settings')
+    ) {
       setPage('usage-month')
     }
   }, [isMobile, page, needsDayAndNightSetup])
@@ -191,7 +195,8 @@ function App() {
   }
 
   const onUsagePage = USAGE_PAGES.some((p) => p.page === page)
-  const onAdminPage = page === 'manage-data' || page === 'manage-users' || page === 'change-password-settings'
+  const onAdminPage =
+    page === 'manage-data' || page === 'manage-growatt-data' || page === 'manage-users' || page === 'change-password-settings'
 
   return (
     <div className="app-shell">
@@ -241,7 +246,16 @@ function App() {
                     className={page === 'manage-data' ? 'active' : ''}
                     onClick={() => selectAdminPage('manage-data')}
                   >
-                    Manage Data
+                    Manage Octopus Data
+                  </button>
+                  <button
+                    type="button"
+                    className={page === 'manage-growatt-data' ? 'active' : ''}
+                    onClick={() => selectAdminPage('manage-growatt-data')}
+                    disabled={needsDayAndNightSetup}
+                    title={needsDayAndNightSetup ? 'Finish Day/Night tariff setup first' : undefined}
+                  >
+                    Manage Growatt Data
                   </button>
                   <button
                     type="button"
@@ -291,6 +305,7 @@ function App() {
       {page === 'manage-data' && user?.role === 'ADMIN' && (
         <ManageData onTariffStatusChange={applyDayAndNightStatuses} />
       )}
+      {page === 'manage-growatt-data' && user?.role === 'ADMIN' && <ManageGrowattData />}
       {page === 'manage-users' && user?.role === 'ADMIN' && <ManageUsers currentUserId={user.id} />}
       {page === 'change-password-settings' && user?.role === 'ADMIN' && (
         <ChangePasswordSettings username={user.username} />

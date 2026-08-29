@@ -39,6 +39,14 @@ interface UsagePeriodViewProps {
   stdChgDaysByMpan: Map<string, Set<string>> | null
   error: string | null
   noDataMessage: ReactNode
+  // Solar overlay - all four optional/default-off so a page can omit them entirely if solar
+  // isn't relevant. solarByKey holds kWh for the period-based pages or a Watts power curve for
+  // the Day page (see UsageBarChart's SolarOverlayProps) - solarTotalKwh is always kWh
+  // regardless, since it drives the toolbar/insights figures rather than the chart line itself.
+  solarByKey?: Map<string, number> | null
+  solarTotalKwh?: number | null
+  solarAvailable?: boolean
+  solarUnit?: 'kWh' | 'W'
   // Opt-in, so a future usage-by-X page can still fall back to chart/table-only behaviour.
   enableInsights?: boolean
   // Singular period noun for the Insights section's "Average per X" cards - "Day" for Usage by
@@ -123,6 +131,16 @@ function formatAveragePerPeriodLine(kwh: number, cost: number, periodCount: numb
   return formatKwhAndCostLine(kwh / periodCount, cost / periodCount)
 }
 
+// Solar has no cost/rate concept in this feature - just the kWh half of formatKwhAndCostLine.
+function formatKwhOnlyLine(kwh: number): string {
+  return `${formatKwh(kwh)} kWh`
+}
+
+function formatSolarAveragePerPeriodLine(totalKwh: number, periodCount: number): string {
+  if (periodCount <= 0) return '–'
+  return formatKwhOnlyLine(totalKwh / periodCount)
+}
+
 // Shared table/chart rendering for every usage-by-X page - each page supplies its own period
 // selector (via `controls`) and how a row's period key(s) are rendered/labelled (via
 // `periodColumns`), and this owns the MPAN filter, chart/table visibility toggles, chart metric
@@ -142,6 +160,10 @@ export default function UsagePeriodView({
   enableInsights = false,
   insightsPeriodLabel = 'Day',
   periodSummaryLabel,
+  solarByKey = null,
+  solarTotalKwh = null,
+  solarAvailable = false,
+  solarUnit = 'kWh',
 }: UsagePeriodViewProps) {
   const isMobile = useIsMobile()
   const [selectedMpans, setSelectedMpans] = useState<Set<string> | null>(null)
@@ -149,6 +171,7 @@ export default function UsagePeriodView({
   const [showTable, setShowTable] = useState(true)
   const [showInsights, setShowInsights] = useState(true)
   const [chartView, setChartView] = useState<ChartView>('usage')
+  const [showSolar, setShowSolar] = useState(true)
 
   // The table isn't offered on mobile at all - deriving this rather than forcing showTable
   // itself to false keeps the desktop toggle state intact if the viewport is later resized back
@@ -194,6 +217,21 @@ export default function UsagePeriodView({
     }
     return { kwh, total }
   }, [totalsByMpan, includedMeterPoints])
+
+  // Whether solar should actually be shown right now - available (Growatt configured) and the
+  // checkbox is on. Gates the chart overlay, the toolbar total, and the insights section
+  // identically, the same way selectedMpans gates the MPAN-driven equivalents of each.
+  const solarActive = solarAvailable && showSolar && solarByKey !== null && solarTotalKwh !== null
+
+  // Count of rows solarByKey actually has a value for, not rows.length - a page showing a
+  // partly-future range (e.g. the rest of this month) shouldn't dilute the average with periods
+  // that haven't happened yet. The backend never returns a row for a period with no data, so
+  // "has an entry" is already exactly the right cutoff, without needing a separate "latest key"
+  // concept the way the MPAN-driven groups above do.
+  const solarPeriodCount = useMemo(() => {
+    if (!solarByKey || !rows) return 0
+    return rows.filter((row) => solarByKey.has(row.key)).length
+  }, [solarByKey, rows])
 
   // Matches the standing-charge cutoff in useUsagePeriodData: for a part-way-through-the-range
   // view, average over the periods we actually have usage data for rather than every expected
@@ -322,6 +360,10 @@ export default function UsagePeriodView({
     })
   }
 
+  function toggleSolar() {
+    setShowSolar((current) => !current)
+  }
+
   const hasAnyUsage =
     rows?.some((row) => Object.values(row.byMpan).some((f) => f.kwh !== 0 || f.total !== 0)) ?? false
 
@@ -392,9 +434,9 @@ export default function UsagePeriodView({
         </div>
       </div>
 
-      {meterPoints && meterPoints.length > 0 && (
+      {((meterPoints && meterPoints.length > 0) || solarAvailable) && (
         <div className="usage-page__mpan-toggles">
-          {meterPoints.map((mp) => (
+          {meterPoints?.map((mp) => (
             <label key={mp.mpan} className="usage-page__mpan-toggle">
               <input
                 type="checkbox"
@@ -404,6 +446,12 @@ export default function UsagePeriodView({
               {meterPointLabel(mp)}
             </label>
           ))}
+          {solarAvailable && (
+            <label className="usage-page__mpan-toggle">
+              <input type="checkbox" checked={showSolar} onChange={toggleSolar} />
+              Solar
+            </label>
+          )}
         </div>
       )}
 
@@ -431,6 +479,9 @@ export default function UsagePeriodView({
             {chartTotal && (
               <div className="usage-page__chart-total">
                 Total: {isKwhView(chartView) ? `${formatKwh(chartTotal.kwh)} kWh` : `£${formatCost(chartTotal.total)}`}
+                {solarActive && solarTotalKwh !== null && (
+                  <span className="usage-page__chart-total-solar"> · Solar: {formatKwh(solarTotalKwh)} kWh</span>
+                )}
               </div>
             )}
           </div>
@@ -446,6 +497,19 @@ export default function UsagePeriodView({
               meterPoints={includedMeterPoints}
               metric={isKwhView(chartView) ? 'kwh' : 'cost'}
               offPeakAvailableByMpan={offPeakAvailableByMpan ?? undefined}
+              solar={
+                solarActive && solarByKey
+                  ? {
+                      byKey: solarByKey,
+                      unit: solarUnit,
+                      // A kWh overlay shares the primary axis when the bars are also kWh, but
+                      // needs its own axis on the £ view (per the cost-view design) or whenever
+                      // the overlay itself is in Watts (the Day page's power curve, which is
+                      // never comparable to kWh/£ on a shared scale regardless of chart view).
+                      useSecondaryAxis: solarUnit === 'W' || chartView === 'cost',
+                    }
+                  : undefined
+              }
             />
           )}
         </div>
@@ -570,6 +634,19 @@ export default function UsagePeriodView({
             </div>
           )}
 
+          {solarActive && solarTotalKwh !== null && (
+            <div className="usage-page__insights-category">
+              <h3 className="usage-page__insights-subheading">Solar</h3>
+              <div className="usage-page__stat-grid">
+                <StatTile label="Total" value={formatKwhOnlyLine(solarTotalKwh)} />
+                <StatTile
+                  label={`Average per ${insightsPeriodLabel}`}
+                  value={formatSolarAveragePerPeriodLine(solarTotalKwh, solarPeriodCount)}
+                />
+              </div>
+            </div>
+          )}
+
           {(insightsData.importMpans.length > 0 ||
             insightsData.exportMpans.length > 0 ||
             insightsData.gasMpans.length > 0) && (
@@ -594,7 +671,8 @@ export default function UsagePeriodView({
 
           {insightsData.importMpans.length === 0 &&
             insightsData.exportMpans.length === 0 &&
-            insightsData.gasMpans.length === 0 && (
+            insightsData.gasMpans.length === 0 &&
+            !(solarActive && solarTotalKwh !== null) && (
               <p className="usage-page__insights-empty">Select an MPAN above to see insights.</p>
             )}
         </div>

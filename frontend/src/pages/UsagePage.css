@@ -79,6 +79,10 @@
   color: var(--text-h);
 }
 
+.usage-page__chart-total-solar {
+  color: var(--chart-solar);
+}
+
 .usage-page__metric-toggle button {
   font: inherit;
   font-size: 13px;

@@ -4,11 +4,13 @@ import UsagePeriodView, { type PeriodColumn } from './UsagePeriodView'
 import {
   addDays,
   dayOfWeek,
+  fetchSolarDayItems,
   formatDayLabel,
   formatDayLabelWithYear,
   isoWeekMonday,
   pad2,
   useMeterPoints,
+  useSolarPeriodOverlay,
   useUsagePeriodData,
   type RawPeriodItem,
   type UsagePeriodConfig,
@@ -64,6 +66,7 @@ export default function UsageByWeek() {
   )
 
   const { rows, offPeakAvailableByMpan, latestPeriodKeyByMpan, stdChgDaysByMpan, error } = useUsagePeriodData(meterPoints, config)
+  const solar = useSolarPeriodOverlay(weekStart, addDays(weekStart, 7), fetchSolarDayItems)
 
   function goToPreviousWeek() {
     setWeekStart((d) => addDays(d, -7))
@@ -108,6 +111,10 @@ export default function UsageByWeek() {
       enableInsights
       insightsPeriodLabel="Day"
       periodSummaryLabel={`${formatDayLabel(weekStart)} – ${formatDayLabelWithYear(weekEnd)}`}
+      solarByKey={solar.byKey}
+      solarTotalKwh={solar.totalKwh}
+      solarAvailable={solar.available}
+      solarUnit="kWh"
     />
   )
 }

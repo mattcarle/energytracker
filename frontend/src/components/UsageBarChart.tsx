@@ -1,9 +1,10 @@
 import { Fragment } from 'react'
 import {
   Bar,
-  BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
+  Line,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -57,6 +58,19 @@ function missingHatchPatterns(colors: string[], kind: HatchKind) {
 
 export type ChartMetric = 'kwh' | 'cost'
 
+const SOLAR_SERIES_NAME_KWH = 'Solar generation'
+const SOLAR_SERIES_NAME_WATTS = 'Solar power'
+
+export interface SolarOverlayProps {
+  // Period key (PeriodRow.key) -> value - kWh for the period-based pages, Watts for the Day
+  // page's intraday power curve. Opaque to this component either way; it just plots whatever's here.
+  byKey: Map<string, number>
+  unit: 'kWh' | 'W'
+  // True whenever the overlay's unit doesn't match the bars' own axis (always true for Watts;
+  // true for a kWh overlay only when the bars themselves are showing £, per the cost-view design).
+  useSecondaryAxis: boolean
+}
+
 interface UsageBarChartProps {
   rows: PeriodRow[]
   meterPoints: MeterPoint[]
@@ -64,6 +78,7 @@ interface UsageBarChartProps {
   // Which MPANs have a peak/off-peak split for the shown period - undefined/missing means no
   // split, same as the table column that drives this same flag.
   offPeakAvailableByMpan?: Map<string, boolean>
+  solar?: SolarOverlayProps
 }
 
 function usageKey(mpan: string): string {
@@ -107,8 +122,34 @@ const MIN_MISSING_BAR_PX = 3
 // negative stack at the true baseline instead; formatValue below hides the resulting "-0.00".
 const EXPORT_ZERO_EPSILON = -1e-6
 
-function minPointSizeForFullyMissing(data: Record<string, number | string | boolean>[], key: string) {
+function minPointSizeForFullyMissing(data: Record<string, number | string | boolean | null>[], key: string) {
   return (_value: number | undefined | null, index: number) => (data[index]?.[key] ? MIN_MISSING_BAR_PX : 0)
+}
+
+// Rounds a positive value up to a "clean" step (1/2/5 x 10^n) - approximates the padding
+// Recharts' own default ("nice") domain would pick, so an axis given an explicit domain (see
+// below) still lands on round tick numbers instead of the raw data max/min.
+function niceCeil(value: number): number {
+  if (value <= 0) return 0
+  const exponent = Math.floor(Math.log10(value))
+  const magnitude = 10 ** exponent
+  const fraction = value / magnitude
+  const niceFraction = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10
+  return niceFraction * magnitude
+}
+
+function niceFloor(value: number): number {
+  return -niceCeil(-value)
+}
+
+// Defensive second layer for axis tick labels, independent of how clean the domain bounds fed
+// into Recharts are - its own "nice" tick step computation can still land a tick a hair off a
+// round number (e.g. a stray 2e-13 instead of exactly 0). Snapping anything within float-noise
+// distance of zero to exactly 0, and otherwise rounding to 2dp, keeps every displayed tick clean
+// without hiding genuine sub-integer values (fractional £ totals in particular).
+function roundTick(value: number): number {
+  if (Math.abs(value) < 1e-6) return 0
+  return Math.round(value * 100) / 100
 }
 
 // Electricity import and export share a stackId so they render as one bar per day rather
@@ -127,10 +168,18 @@ function formatValue(value: number, metric: ChartMetric): string {
   return metric === 'kwh' ? `${clean.toFixed(2)} kWh` : `£${clean.toFixed(2)}`
 }
 
-export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvailableByMpan }: UsageBarChartProps) {
+function formatSolarValue(value: number, unit: 'kWh' | 'W'): string {
+  return unit === 'W' ? `${Math.round(value)} W` : `${value.toFixed(2)} kWh`
+}
+
+export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvailableByMpan, solar }: UsageBarChartProps) {
   const isMobile = useIsMobile()
+  const solarSeriesName = solar?.unit === 'W' ? SOLAR_SERIES_NAME_WATTS : SOLAR_SERIES_NAME_KWH
   const data = rows.map((row) => {
-    const point: Record<string, number | string | boolean> = { dayLabel: row.chartLabel }
+    const point: Record<string, number | string | boolean | null> = { dayLabel: row.chartLabel }
+    if (solar) {
+      point.solarValue = solar.byKey.get(row.key) ?? null
+    }
     for (const mp of meterPoints) {
       const figures = row.byMpan[mp.mpan]
       const hasSplit = offPeakAvailableByMpan?.get(mp.mpan) ?? false
@@ -155,6 +204,69 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
     return point
   })
 
+  // With a secondary axis, Recharts scales each YAxis independently from its own data, which
+  // essentially never puts their zero lines at the same height (see e.g. the cost view: bars
+  // span a small negative-to-positive £ range, while solar kWh only ever spans zero-to-positive -
+  // left ends up with 0 in the middle, right with 0 at the very bottom). Both axes are given an
+  // explicit, jointly-computed domain instead so their zero points align exactly; the primary
+  // axis's own natural range is untouched otherwise (padding matches niceCeil, not stretched),
+  // and only the secondary (solar) axis gets an invisible negative floor added below its real
+  // zero, sized so it lands at the same fractional height as the primary axis's zero.
+  let primaryDomain: [number, number] | undefined
+  let solarDomain: [number, number] | undefined
+  if (solar?.useSecondaryAxis) {
+    const groupsByStackId = new Map<string, MeterPoint[]>()
+    for (const mp of meterPoints) {
+      const id = stackIdFor(mp)
+      const group = groupsByStackId.get(id) ?? []
+      group.push(mp)
+      groupsByStackId.set(id, group)
+    }
+
+    let primMaxRaw = 0
+    let primMinRaw = 0
+    for (const point of data) {
+      for (const group of groupsByStackId.values()) {
+        let pos = 0
+        let neg = 0
+        for (const mp of group) {
+          const hasSplit = offPeakAvailableByMpan?.get(mp.mpan) ?? false
+          const valueKeys = hasSplit ? [offPeakKey(mp.mpan), peakKey(mp.mpan)] : [usageKey(mp.mpan)]
+          const keys = metric === 'cost' ? [stdChgKey(mp.mpan), ...valueKeys] : valueKeys
+          for (const key of keys) {
+            const value = point[key]
+            if (typeof value !== 'number') continue
+            if (value >= 0) pos += value
+            else neg += value
+          }
+        }
+        if (pos > primMaxRaw) primMaxRaw = pos
+        if (neg < primMinRaw) primMinRaw = neg
+      }
+    }
+
+    let solarMaxRaw = 0
+    for (const value of solar.byKey.values()) {
+      if (value > solarMaxRaw) solarMaxRaw = value
+    }
+
+    const primMax = niceCeil(primMaxRaw || 1)
+    const primMin = primMinRaw < 0 ? niceFloor(primMinRaw) : 0
+    const solarMax = niceCeil(solarMaxRaw || 1)
+    // Fraction of the primary axis that sits below zero - the secondary axis's own negative
+    // floor is sized so its zero lands at this same fraction, even though solar itself never
+    // goes negative.
+    const belowZeroFraction = primMax > primMin ? -primMin / (primMax - primMin) : 0
+    // The division above is the one domain value not already snapped to a round number by
+    // niceCeil/niceFloor - rounded to the nearest whole unit so it (and the near-zero tick
+    // Recharts' own "nice" tick step then derives from it) don't inherit float noise like
+    // -1999.9999999999998 or a stray 2e-13 "zero".
+    const solarMin = belowZeroFraction > 0 ? Math.round(-(belowZeroFraction / (1 - belowZeroFraction)) * solarMax) : 0
+
+    primaryDomain = [primMin, primMax]
+    solarDomain = [solarMin, solarMax]
+  }
+
   // Thin out x-axis labels for a full month so they don't overlap; every day is still a
   // separate bar group, only the tick labels are skipped. Mobile gets a much lower cap since
   // the same label count that fits a desktop-width chart collides at phone width.
@@ -176,6 +288,7 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
       ]
     }),
     ...(metric === 'cost' ? [{ label: 'Standing charge', color: 'var(--chart-stdchg)' }] : []),
+    ...(solar ? [{ label: solarSeriesName, color: 'var(--chart-solar)' }] : []),
   ]
 
   const hasAnyMissing = data.some((point) => meterPoints.some((mp) => point[missingKey(mp.mpan)]))
@@ -183,7 +296,7 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
   return (
     <div className="usage-bar-chart">
       <ResponsiveContainer width="100%" height={360}>
-        <BarChart data={data} stackOffset="sign" margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
+        <ComposedChart data={data} stackOffset="sign" margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
           <defs>
             {missingHatchPatterns(MPAN_COLORS, 'mpan')}
             {missingHatchPatterns(MPAN_OFFPEAK_COLORS, 'offpeak')}
@@ -195,16 +308,31 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
             interval={tickInterval}
           />
           <YAxis
+            domain={primaryDomain}
             tick={{ fill: 'var(--text)', fontSize: 11 }}
-            tickFormatter={(value: number) => (metric === 'kwh' ? `${value}` : `£${value}`)}
+            tickFormatter={(value: number) => (metric === 'kwh' ? `${roundTick(value)}` : `£${roundTick(value)}`)}
             width={56}
           />
+          {solar?.useSecondaryAxis && (
+            <YAxis
+              yAxisId="solar"
+              orientation="right"
+              domain={solarDomain}
+              tick={{ fill: 'var(--chart-solar)', fontSize: 11 }}
+              tickFormatter={(value: number) => `${roundTick(value)}`}
+              width={56}
+            />
+          )}
           <ReferenceLine y={0} stroke="var(--text)" />
           {/* The tooltip's own box is wide enough to cover most of a phone-width chart under
               the finger that triggered it, so it's dropped entirely on mobile rather than shown. */}
           {!isMobile && (
             <Tooltip
-              formatter={(value, name) => [formatValue(Number(value), metric), name]}
+              formatter={(value, name) =>
+                solar && name === solarSeriesName
+                  ? [formatSolarValue(Number(value), solar.unit), name]
+                  : [formatValue(Number(value), metric), name]
+              }
               contentStyle={{
                 background: 'var(--bg)',
                 border: '1px solid var(--border)',
@@ -300,7 +428,19 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
               </Fragment>
             )
           })}
-        </BarChart>
+          {solar && (
+            <Line
+              yAxisId={solar.useSecondaryAxis ? 'solar' : undefined}
+              type="monotone"
+              dataKey="solarValue"
+              stroke="var(--chart-solar)"
+              strokeWidth={2}
+              dot={false}
+              connectNulls={false}
+              name={solarSeriesName}
+            />
+          )}
+        </ComposedChart>
       </ResponsiveContainer>
       <div className="usage-bar-chart__legend">
         {legendEntries.map((entry) => (

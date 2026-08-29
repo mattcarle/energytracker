@@ -216,7 +216,7 @@ export default function ManageData({ onTariffStatusChange }: ManageDataProps) {
 
   return (
     <section className="manage-data">
-      <h1>Manage Data</h1>
+      <h1>Manage Octopus Data</h1>
 
       {error && <p className="manage-data__error">{error}</p>}
       {!error && !details && <p>Loading account details…</p>}

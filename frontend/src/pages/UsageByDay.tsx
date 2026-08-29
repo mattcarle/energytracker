@@ -6,6 +6,7 @@ import {
   formatFullDate,
   pad2,
   useMeterPoints,
+  useSolarDayOverlay,
   useUsagePeriodData,
   type RawPeriodItem,
   type UsagePeriodConfig,
@@ -79,6 +80,7 @@ export default function UsageByDay() {
   )
 
   const { rows, offPeakAvailableByMpan, latestPeriodKeyByMpan, stdChgDaysByMpan, error } = useUsagePeriodData(meterPoints, config)
+  const solar = useSolarDayOverlay(date)
 
   useEffect(() => {
     if (dateChangedByUser) {
@@ -152,6 +154,10 @@ export default function UsageByDay() {
       enableInsights
       insightsPeriodLabel="Half Hour"
       periodSummaryLabel={formatFullDate(date)}
+      solarByKey={solar.byKey}
+      solarTotalKwh={solar.totalKwh}
+      solarAvailable={solar.available}
+      solarUnit="W"
     />
   )
 }

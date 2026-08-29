@@ -175,6 +175,52 @@ export interface SolarLoadResult {
   error: string | null
 }
 
+export interface GrowattCredentialsStatus {
+  configured: boolean
+  plantId: string | null
+}
+
+export interface SolarDayEntry {
+  date: string
+  kwh: number
+}
+
+// Reused for month/year rows - only the granularity of `period` differs (first of month / of year).
+export interface SolarPeriodEntry {
+  period: string
+  kwh: number
+}
+
+export interface SolarTotals {
+  periodCount: number
+  kwh: number
+}
+
+export interface SolarByDayResponse {
+  days: SolarDayEntry[]
+  totals: SolarTotals
+}
+
+export interface SolarByMonthResponse {
+  months: SolarPeriodEntry[]
+  totals: SolarTotals
+}
+
+export interface SolarPowerPoint {
+  time: string
+  powerWatts: number | null
+}
+
+export interface SolarHourlyResponse {
+  points: SolarPowerPoint[]
+}
+
+export interface SolarDateRange {
+  plantId: string
+  earliest: string
+  latest: string
+}
+
 export interface SetupResult {
   user: AuthUser
   accountLoad: AccountLoadResult

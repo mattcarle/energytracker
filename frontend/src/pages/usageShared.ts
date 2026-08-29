@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { getMeterPoints, getStandingChargesByDay } from '../api/client'
-import type { MeterPoint } from '../api/types'
+import { getMeterPoints, getSolarByDay, getSolarByMonth, getSolarDateRanges, getSolarHourly, getStandingChargesByDay } from '../api/client'
+import type { MeterPoint, SolarPowerPoint } from '../api/types'
 
 export interface MpanFigures {
   kwh: number
@@ -408,4 +408,130 @@ export function useUsagePeriodData(meterPoints: MeterPoint[] | null, config: Usa
   }, [meterPoints, config])
 
   return { rows, offPeakAvailableByMpan, latestPeriodKeyByMpan, stdChgDaysByMpan, error }
+}
+
+// Solar overlay, shared by every usage-by-X page. `byKey` is keyed the same way PeriodRow.key
+// is built for that page so it joins 1:1 - for the period-based pages (Week/Month/Year) that's
+// kWh per period; for the Day page (see useSolarDayOverlay) it's a half-hour-bucketed intraday
+// power curve in Watts instead, since a single day has no per-period kWh series of its own.
+// `totalKwh` is always kWh regardless of what byKey holds - the actual total solar generation
+// for whatever range is currently shown, used for the toolbar/insights figures.
+export interface SolarOverlayData {
+  byKey: Map<string, number> | null
+  totalKwh: number | null
+  available: boolean
+  error: string | null
+}
+
+const EMPTY_SOLAR: SolarOverlayData = { byKey: null, totalKwh: null, available: false, error: null }
+
+// /api/growatt/** (which would otherwise answer "is Growatt configured?" directly) is admin-only,
+// but every usage page is visible to any authenticated user - so availability is inferred from
+// /api/solar/date-range instead (plain authenticated, like /api/usage/**): a non-empty result
+// means at least one plant has ever been backfilled, independent of whatever date range the
+// current page happens to be showing.
+async function solarIsAvailable(): Promise<boolean> {
+  const ranges = await getSolarDateRanges()
+  return ranges.length > 0
+}
+
+export async function fetchSolarDayItems(fromDate: string, toDate: string): Promise<{ key: string; kwh: number }[]> {
+  const response = await getSolarByDay(fromDate, toDate)
+  return response.days.map((d) => ({ key: d.date, kwh: d.kwh }))
+}
+
+export async function fetchSolarMonthItems(fromDate: string, toDate: string): Promise<{ key: string; kwh: number }[]> {
+  const response = await getSolarByMonth(fromDate, toDate)
+  return response.months.map((m) => ({ key: m.period, kwh: m.kwh }))
+}
+
+// Used by UsageByWeek/UsageByMonth (fetchItems = fetchSolarDayItems) and UsageByYear
+// (fetchItems = fetchSolarMonthItems) - the fetch itself is the only thing that differs between
+// them, everything else (availability check, byKey/total assembly) is identical.
+export function useSolarPeriodOverlay(
+  fromDate: string,
+  toDate: string,
+  fetchItems: (fromDate: string, toDate: string) => Promise<{ key: string; kwh: number }[]>,
+): SolarOverlayData {
+  const [data, setData] = useState<SolarOverlayData>(EMPTY_SOLAR)
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([solarIsAvailable(), fetchItems(fromDate, toDate)])
+      .then(([available, items]) => {
+        if (cancelled) return
+        if (!available) {
+          setData(EMPTY_SOLAR)
+          return
+        }
+        const byKey = new Map(items.map((i) => [i.key, i.kwh]))
+        const totalKwh = items.reduce((sum, i) => sum + i.kwh, 0)
+        setData({ byKey, totalKwh, available: true, error: null })
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setData((d) => ({ ...d, error: err instanceof Error ? err.message : 'Failed to load solar data' }))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [fromDate, toDate, fetchItems])
+
+  return data
+}
+
+// Averages the (up to 6) 5-minute power readings falling in each half-hour into one point, so
+// the curve aligns with UsageByDay's 48 half-hourly bars - a category-axis bar chart has no
+// defined position for a denser line series otherwise. A bucket with no non-null readings (e.g.
+// a not-yet-elapsed half hour) is left out of the map entirely, rendering as a gap rather than a
+// fabricated flat value.
+function bucketPowerCurveToHalfHours(points: SolarPowerPoint[]): Map<string, number> {
+  const sums = new Map<string, { total: number; count: number }>()
+  for (const p of points) {
+    if (p.powerWatts === null) continue
+    const timePart = p.time.slice(11, 16) // "YYYY-MM-DD HH:mm" -> "HH:mm"
+    const [h, m] = timePart.split(':').map(Number)
+    const bucketKey = `${pad2(h)}:${m < 30 ? '00' : '30'}`
+    const entry = sums.get(bucketKey) ?? { total: 0, count: 0 }
+    entry.total += p.powerWatts
+    entry.count += 1
+    sums.set(bucketKey, entry)
+  }
+  const result = new Map<string, number>()
+  for (const [key, { total, count }] of sums) result.set(key, total / count)
+  return result
+}
+
+// Day page's solar overlay: the intraday power curve (Watts, bucketed to half hours) for the
+// line, plus that single day's own kWh total (fetched separately via the by-day endpoint, since
+// a power curve alone can't cheaply be summed back into an accurate energy total).
+export function useSolarDayOverlay(date: string): SolarOverlayData {
+  const [data, setData] = useState<SolarOverlayData>(EMPTY_SOLAR)
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([solarIsAvailable(), getSolarHourly(date), getSolarByDay(date, addDays(date, 1))])
+      .then(([available, hourly, dayTotal]) => {
+        if (cancelled) return
+        if (!available) {
+          setData(EMPTY_SOLAR)
+          return
+        }
+        setData({
+          byKey: bucketPowerCurveToHalfHours(hourly.points),
+          totalKwh: dayTotal.days[0]?.kwh ?? 0,
+          available: true,
+          error: null,
+        })
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setData((d) => ({ ...d, error: err instanceof Error ? err.message : 'Failed to load solar data' }))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [date])
+
+  return data
 }

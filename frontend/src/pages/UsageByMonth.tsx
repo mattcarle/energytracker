@@ -5,8 +5,10 @@ import {
   MONTH_NAMES,
   MONTH_NAMES_SHORT,
   dayOfWeek,
+  fetchSolarDayItems,
   pad2,
   useMeterPoints,
+  useSolarPeriodOverlay,
   useUsagePeriodData,
   yearOptions,
   type RawPeriodItem,
@@ -69,6 +71,7 @@ export default function UsageByMonth() {
   }, [year, month])
 
   const { rows, offPeakAvailableByMpan, latestPeriodKeyByMpan, stdChgDaysByMpan, error } = useUsagePeriodData(meterPoints, config)
+  const solar = useSolarPeriodOverlay(firstOfMonth(year, month), firstOfNextMonth(year, month), fetchSolarDayItems)
 
   function goToPreviousMonth() {
     if (month === 1) {
@@ -137,6 +140,10 @@ export default function UsageByMonth() {
       enableInsights
       insightsPeriodLabel="Day"
       periodSummaryLabel={`${MONTH_NAMES_SHORT[month - 1]} ${year}`}
+      solarByKey={solar.byKey}
+      solarTotalKwh={solar.totalKwh}
+      solarAvailable={solar.available}
+      solarUnit="kWh"
     />
   )
 }

@@ -4,8 +4,10 @@ import UsagePeriodView, { type PeriodColumn } from './UsagePeriodView'
 import {
   MONTH_NAMES,
   MONTH_NAMES_SHORT,
+  fetchSolarMonthItems,
   pad2,
   useMeterPoints,
+  useSolarPeriodOverlay,
   useUsagePeriodData,
   yearOptions,
   type RawPeriodItem,
@@ -69,6 +71,7 @@ export default function UsageByYear() {
   )
 
   const { rows, offPeakAvailableByMpan, latestPeriodKeyByMpan, stdChgDaysByMpan, error } = useUsagePeriodData(meterPoints, config)
+  const solar = useSolarPeriodOverlay(`${year}-01-01`, `${year + 1}-01-01`, fetchSolarMonthItems)
 
   const controls = (
     <>
@@ -109,6 +112,10 @@ export default function UsageByYear() {
       enableInsights
       insightsPeriodLabel="Month"
       periodSummaryLabel={`${year}`}
+      solarByKey={solar.byKey}
+      solarTotalKwh={solar.totalKwh}
+      solarAvailable={solar.available}
+      solarUnit="kWh"
     />
   )
 }

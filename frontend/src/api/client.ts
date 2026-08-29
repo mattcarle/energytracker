@@ -4,9 +4,16 @@ import type {
   AuthUser,
   DataIntegrityReport,
   DayAndNightTariffStatus,
+  GrowattCredentialsStatus,
   Meter,
   MeterPoint,
+  PlantLoadResult,
   SetupResult,
+  SolarByDayResponse,
+  SolarByMonthResponse,
+  SolarDateRange,
+  SolarHourlyResponse,
+  SolarLoadResult,
   StandingChargeByDayEntry,
   UsageByDayResponse,
   UsageByHalfHourResponse,
@@ -151,6 +158,41 @@ export function getStandingChargesByDay(
 ): Promise<StandingChargeByDayEntry[]> {
   const params = new URLSearchParams({ mpan, fromDate, toDate })
   return getJson(`/api/standing-charges/by-day?${params.toString()}`)
+}
+
+export function getSolarDateRanges(): Promise<SolarDateRange[]> {
+  return getJson('/api/solar/date-range')
+}
+
+export function getSolarByDay(fromDate: string, toDate: string): Promise<SolarByDayResponse> {
+  const params = new URLSearchParams({ fromDate, toDate })
+  return getJson(`/api/solar/by-day?${params.toString()}`)
+}
+
+export function getSolarByMonth(fromDate: string, toDate: string): Promise<SolarByMonthResponse> {
+  const params = new URLSearchParams({ fromDate, toDate })
+  return getJson(`/api/solar/by-month?${params.toString()}`)
+}
+
+export function getSolarHourly(date: string): Promise<SolarHourlyResponse> {
+  const params = new URLSearchParams({ date })
+  return getJson(`/api/solar/hourly?${params.toString()}`)
+}
+
+export function getGrowattCredentialsStatus(): Promise<GrowattCredentialsStatus> {
+  return getJson('/api/growatt/credentials/status')
+}
+
+export function saveGrowattCredentials(apiToken: string): Promise<PlantLoadResult> {
+  return request('/api/growatt/credentials', {
+    method: 'POST',
+    body: JSON.stringify({ apiToken }),
+  })
+}
+
+export function loadGrowattSolarData(deleteAll: boolean): Promise<SolarLoadResult> {
+  const params = new URLSearchParams({ deleteAll: String(deleteAll) })
+  return request(`/api/growatt/load?${params.toString()}`, { method: 'POST' })
 }
 
 export function getSetupStatus(): Promise<{ setupRequired: boolean }> {
