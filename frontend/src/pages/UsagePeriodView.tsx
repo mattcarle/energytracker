@@ -46,7 +46,7 @@ interface UsagePeriodViewProps {
   solarByKey?: Map<string, number> | null
   solarTotalKwh?: number | null
   solarAvailable?: boolean
-  solarUnit?: 'kWh' | 'W'
+  solarUnit?: 'kWh' | 'kW'
   // Opt-in, so a future usage-by-X page can still fall back to chart/table-only behaviour.
   enableInsights?: boolean
   // Singular period noun for the Insights section's "Average per X" cards - "Day" for Usage by
@@ -502,11 +502,11 @@ export default function UsagePeriodView({
                   ? {
                       byKey: solarByKey,
                       unit: solarUnit,
-                      // A kWh overlay shares the primary axis when the bars are also kWh, but
-                      // needs its own axis on the £ view (per the cost-view design) or whenever
-                      // the overlay itself is in Watts (the Day page's power curve, which is
-                      // never comparable to kWh/£ on a shared scale regardless of chart view).
-                      useSecondaryAxis: solarUnit === 'W' || chartView === 'cost',
+                      // Both kWh (period pages) and kW (the Day page's power curve) share the
+                      // primary axis with the bars when those are also in kWh - close enough in
+                      // magnitude to read together. The £ view always needs its own axis though,
+                      // since £ isn't comparable to either on a shared scale.
+                      useSecondaryAxis: chartView === 'cost',
                     }
                   : undefined
               }

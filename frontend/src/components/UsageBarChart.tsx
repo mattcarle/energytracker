@@ -59,15 +59,16 @@ function missingHatchPatterns(colors: string[], kind: HatchKind) {
 export type ChartMetric = 'kwh' | 'cost'
 
 const SOLAR_SERIES_NAME_KWH = 'Solar generation'
-const SOLAR_SERIES_NAME_WATTS = 'Solar power'
+const SOLAR_SERIES_NAME_KW = 'Solar power (kW)'
 
 export interface SolarOverlayProps {
-  // Period key (PeriodRow.key) -> value - kWh for the period-based pages, Watts for the Day
-  // page's intraday power curve. Opaque to this component either way; it just plots whatever's here.
+  // Period key (PeriodRow.key) -> value - kWh for the period-based pages, kW for the Day page's
+  // intraday power curve. Opaque to this component either way; it just plots whatever's here.
   byKey: Map<string, number>
-  unit: 'kWh' | 'W'
-  // True whenever the overlay's unit doesn't match the bars' own axis (always true for Watts;
-  // true for a kWh overlay only when the bars themselves are showing £, per the cost-view design).
+  unit: 'kWh' | 'kW'
+  // True whenever the overlay's unit doesn't share a scale with the bars' own axis - only the £
+  // view today, since both kWh and kW sit close enough to the bars' own kWh magnitude to share
+  // an axis, but £ never does.
   useSecondaryAxis: boolean
 }
 
@@ -168,13 +169,13 @@ function formatValue(value: number, metric: ChartMetric): string {
   return metric === 'kwh' ? `${clean.toFixed(2)} kWh` : `£${clean.toFixed(2)}`
 }
 
-function formatSolarValue(value: number, unit: 'kWh' | 'W'): string {
-  return unit === 'W' ? `${Math.round(value)} W` : `${value.toFixed(2)} kWh`
+function formatSolarValue(value: number, unit: 'kWh' | 'kW'): string {
+  return `${value.toFixed(2)} ${unit}`
 }
 
 export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvailableByMpan, solar }: UsageBarChartProps) {
   const isMobile = useIsMobile()
-  const solarSeriesName = solar?.unit === 'W' ? SOLAR_SERIES_NAME_WATTS : SOLAR_SERIES_NAME_KWH
+  const solarSeriesName = solar?.unit === 'kW' ? SOLAR_SERIES_NAME_KW : SOLAR_SERIES_NAME_KWH
   const data = rows.map((row) => {
     const point: Record<string, number | string | boolean | null> = { dayLabel: row.chartLabel }
     if (solar) {
@@ -437,6 +438,7 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
               strokeWidth={2}
               dot={false}
               connectNulls={false}
+              isAnimationActive={false}
               name={solarSeriesName}
             />
           )}

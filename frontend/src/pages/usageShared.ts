@@ -480,11 +480,14 @@ export function useSolarPeriodOverlay(
   return data
 }
 
+const WATTS_PER_KW = 1000
+
 // Averages the (up to 6) 5-minute power readings falling in each half-hour into one point, so
 // the curve aligns with UsageByDay's 48 half-hourly bars - a category-axis bar chart has no
 // defined position for a denser line series otherwise. A bucket with no non-null readings (e.g.
 // a not-yet-elapsed half hour) is left out of the map entirely, rendering as a gap rather than a
-// fabricated flat value.
+// fabricated flat value. Converted to kW here (not just at display time) so the values are
+// already the same order of magnitude as the half-hourly kWh bars they're sharing an axis with.
 function bucketPowerCurveToHalfHours(points: SolarPowerPoint[]): Map<string, number> {
   const sums = new Map<string, { total: number; count: number }>()
   for (const p of points) {
@@ -498,11 +501,11 @@ function bucketPowerCurveToHalfHours(points: SolarPowerPoint[]): Map<string, num
     sums.set(bucketKey, entry)
   }
   const result = new Map<string, number>()
-  for (const [key, { total, count }] of sums) result.set(key, total / count)
+  for (const [key, { total, count }] of sums) result.set(key, total / count / WATTS_PER_KW)
   return result
 }
 
-// Day page's solar overlay: the intraday power curve (Watts, bucketed to half hours) for the
+// Day page's solar overlay: the intraday power curve (kW, bucketed to half hours) for the
 // line, plus that single day's own kWh total (fetched separately via the by-day endpoint, since
 // a power curve alone can't cheaply be summed back into an accurate energy total).
 export function useSolarDayOverlay(date: string): SolarOverlayData {
