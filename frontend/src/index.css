@@ -21,6 +21,7 @@
   --chart-stdchg: #c9a227;
   --chart-solar: #1e7a34;
   --chart-battery: #8b1a1a;
+  --chart-load: #b0227a;
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 
@@ -63,6 +64,7 @@
     --chart-stdchg: #f0c14b;
     --chart-solar: #3fae53;
     --chart-battery: #c23a3a;
+    --chart-load: #f472b6;
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
   }

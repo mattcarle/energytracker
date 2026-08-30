@@ -289,13 +289,16 @@ public class GrowattApiService {
 
     // A real mix_data point carries roughly 150 device/BMS telemetry fields (confirmed live) -
     // only `time`, `ppv` (actual PV panel power, zero overnight - unlike plant/power's `pac`,
-    // which mixes in battery activity), and `soc` (battery state of charge, 0-100 - confirmed
-    // live tracking the pack's real charge level through a full day) are needed here.
+    // which mixes in battery activity), `soc` (battery state of charge, 0-100 - confirmed live
+    // tracking the pack's real charge level through a full day), and `plocalLoadTotal` (house
+    // load consumption power, Watts - confirmed live alongside its `elocalLoadToday`/
+    // `elocalLoadTotal` kWh accumulators) are needed here.
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class MixDataPointDto {
         public String time;
         public Double ppv;
         public Integer soc;
+        public Double plocalLoadTotal;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

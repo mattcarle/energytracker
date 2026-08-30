@@ -211,6 +211,8 @@ export interface SolarPowerPoint {
   powerWatts: number | null
   // Battery state of charge, 0-100, null when not reported.
   batteryPercent: number | null
+  // House load consumption power, Watts, null when not reported.
+  loadWatts: number | null
 }
 
 export interface SolarHourlyResponse {

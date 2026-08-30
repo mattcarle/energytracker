@@ -52,6 +52,10 @@ interface UsagePeriodViewProps {
   // be shown/hidden independently.
   batteryByKey?: Map<string, number> | null
   batteryAvailable?: boolean
+  // House load consumption overlay (kW) - Day page only, same reasoning/independence as
+  // battery's checkbox above.
+  loadByKey?: Map<string, number> | null
+  loadAvailable?: boolean
   // Opt-in, so a future usage-by-X page can still fall back to chart/table-only behaviour.
   enableInsights?: boolean
   // Singular period noun for the Insights section's "Average per X" cards - "Day" for Usage by
@@ -171,6 +175,8 @@ export default function UsagePeriodView({
   solarUnit = 'kWh',
   batteryByKey = null,
   batteryAvailable = false,
+  loadByKey = null,
+  loadAvailable = false,
 }: UsagePeriodViewProps) {
   const isMobile = useIsMobile()
   const [selectedMpans, setSelectedMpans] = useState<Set<string> | null>(null)
@@ -180,6 +186,7 @@ export default function UsagePeriodView({
   const [chartView, setChartView] = useState<ChartView>('usage')
   const [showSolar, setShowSolar] = useState(true)
   const [showBattery, setShowBattery] = useState(true)
+  const [showLoad, setShowLoad] = useState(true)
 
   // The table isn't offered on mobile at all - deriving this rather than forcing showTable
   // itself to false keeps the desktop toggle state intact if the viewport is later resized back
@@ -234,6 +241,9 @@ export default function UsagePeriodView({
   // Same idea as solarActive, but its own checkbox - battery can be shown/hidden independently
   // of solar even though both come from the same live Growatt call.
   const batteryActive = batteryAvailable && showBattery && batteryByKey !== null
+
+  // Same idea again, for load.
+  const loadActive = loadAvailable && showLoad && loadByKey !== null
 
   // Count of rows solarByKey actually has a value for, not rows.length - a page showing a
   // partly-future range (e.g. the rest of this month) shouldn't dilute the average with periods
@@ -380,6 +390,10 @@ export default function UsagePeriodView({
     setShowBattery((current) => !current)
   }
 
+  function toggleLoad() {
+    setShowLoad((current) => !current)
+  }
+
   const hasAnyUsage =
     rows?.some((row) => Object.values(row.byMpan).some((f) => f.kwh !== 0 || f.total !== 0)) ?? false
 
@@ -450,7 +464,7 @@ export default function UsagePeriodView({
         </div>
       </div>
 
-      {((meterPoints && meterPoints.length > 0) || solarAvailable || batteryAvailable) && (
+      {((meterPoints && meterPoints.length > 0) || solarAvailable || batteryAvailable || loadAvailable) && (
         <div className="usage-page__mpan-toggles">
           {meterPoints?.map((mp) => (
             <label key={mp.mpan} className="usage-page__mpan-toggle">
@@ -472,6 +486,12 @@ export default function UsagePeriodView({
             <label className="usage-page__mpan-toggle">
               <input type="checkbox" checked={showBattery} onChange={toggleBattery} />
               Battery
+            </label>
+          )}
+          {loadAvailable && (
+            <label className="usage-page__mpan-toggle">
+              <input type="checkbox" checked={showLoad} onChange={toggleLoad} />
+              Load
             </label>
           )}
         </div>
@@ -533,6 +553,9 @@ export default function UsagePeriodView({
                   : undefined
               }
               battery={batteryActive && batteryByKey ? { byKey: batteryByKey } : undefined}
+              load={
+                loadActive && loadByKey ? { byKey: loadByKey, useSecondaryAxis: chartView === 'cost' } : undefined
+              }
             />
           )}
         </div>

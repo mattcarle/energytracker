@@ -425,9 +425,19 @@ export interface SolarOverlayData {
   // hour. Undefined/null on the period-based pages, which have no equivalent intraday data to
   // derive it from.
   batteryByKey?: Map<string, number> | null
+  // Day page only - house load consumption in kW, averaged per half hour. Same "no period-level
+  // equivalent" reasoning as batteryByKey.
+  loadByKey?: Map<string, number> | null
 }
 
-const EMPTY_SOLAR: SolarOverlayData = { byKey: null, totalKwh: null, available: false, error: null, batteryByKey: null }
+const EMPTY_SOLAR: SolarOverlayData = {
+  byKey: null,
+  totalKwh: null,
+  available: false,
+  error: null,
+  batteryByKey: null,
+  loadByKey: null,
+}
 
 // /api/growatt/** (which would otherwise answer "is Growatt configured?" directly) is admin-only,
 // but every usage page is visible to any authenticated user - so availability is inferred from
@@ -524,6 +534,10 @@ function bucketBatteryCurveToHalfHours(points: SolarPowerPoint[]): Map<string, n
   return bucketToHalfHours(points, (p) => p.batteryPercent, 1)
 }
 
+function bucketLoadCurveToHalfHours(points: SolarPowerPoint[]): Map<string, number> {
+  return bucketToHalfHours(points, (p) => p.loadWatts, WATTS_PER_KW)
+}
+
 // Day page's solar overlay: the intraday power curve (kW, bucketed to half hours) for the
 // line, plus that single day's own kWh total (fetched separately via the by-day endpoint, since
 // a power curve alone can't cheaply be summed back into an accurate energy total).
@@ -545,6 +559,7 @@ export function useSolarDayOverlay(date: string): SolarOverlayData {
           available: true,
           error: null,
           batteryByKey: bucketBatteryCurveToHalfHours(hourly.points),
+          loadByKey: bucketLoadCurveToHalfHours(hourly.points),
         })
       })
       .catch((err: unknown) => {

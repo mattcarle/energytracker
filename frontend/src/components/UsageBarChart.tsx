@@ -80,6 +80,16 @@ export interface BatteryOverlayProps {
   byKey: Map<string, number>
 }
 
+export interface LoadOverlayProps {
+  // Period key -> house load consumption in kW - always the Day page's intraday curve (no
+  // persisted period-level figure exists, unlike solar). Always kW, unlike SolarOverlayProps,
+  // since there's no period-based (kWh) view of it to support.
+  byKey: Map<string, number>
+  // Same meaning as SolarOverlayProps.useSecondaryAxis - shares the "solar" kW axis with solar
+  // when one's in use, so both kW curves read off the same scale.
+  useSecondaryAxis: boolean
+}
+
 interface UsageBarChartProps {
   rows: PeriodRow[]
   meterPoints: MeterPoint[]
@@ -89,6 +99,7 @@ interface UsageBarChartProps {
   offPeakAvailableByMpan?: Map<string, boolean>
   solar?: SolarOverlayProps
   battery?: BatteryOverlayProps
+  load?: LoadOverlayProps
 }
 
 function usageKey(mpan: string): string {
@@ -183,12 +194,17 @@ function formatSolarValue(value: number, unit: 'kWh' | 'kW'): string {
 }
 
 const BATTERY_SERIES_NAME = 'Battery'
+const LOAD_SERIES_NAME = 'Load'
 
 function formatBatteryValue(value: number): string {
   return `${Math.round(value)}%`
 }
 
-export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvailableByMpan, solar, battery }: UsageBarChartProps) {
+function formatLoadValue(value: number): string {
+  return `${value.toFixed(2)} kW`
+}
+
+export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvailableByMpan, solar, battery, load }: UsageBarChartProps) {
   const isMobile = useIsMobile()
   const solarSeriesName = solar?.unit === 'kW' ? SOLAR_SERIES_NAME_KW : SOLAR_SERIES_NAME_KWH
   const data = rows.map((row) => {
@@ -198,6 +214,9 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
     }
     if (battery) {
       point.batteryValue = battery.byKey.get(row.key) ?? null
+    }
+    if (load) {
+      point.loadValue = load.byKey.get(row.key) ?? null
     }
     for (const mp of meterPoints) {
       const figures = row.byMpan[mp.mpan]
@@ -237,7 +256,7 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
   let solarDomain: [number, number] | undefined
   let solarTicks: number[] | undefined
   let batteryDomain: [number, number] | undefined
-  if (solar?.useSecondaryAxis || battery) {
+  if (solar?.useSecondaryAxis || load?.useSecondaryAxis || battery) {
     const groupsByStackId = new Map<string, MeterPoint[]>()
     for (const mp of meterPoints) {
       const id = stackIdFor(mp)
@@ -267,12 +286,17 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
         if (neg < primMinRaw) primMinRaw = neg
       }
     }
-    // When solar shares the primary axis (not useSecondaryAxis), it would otherwise be part of
-    // Recharts' own auto-domain for that axis - folded in here so an explicit primaryDomain
-    // (now always set whenever battery needs one) doesn't clip it back down to the bars' own
+    // When solar/load share the primary axis (not useSecondaryAxis), they'd otherwise be part
+    // of Recharts' own auto-domain for that axis - folded in here so an explicit primaryDomain
+    // (now always set whenever battery needs one) doesn't clip them back down to the bars' own
     // range.
     if (solar && !solar.useSecondaryAxis) {
       for (const value of solar.byKey.values()) {
+        if (value > primMaxRaw) primMaxRaw = value
+      }
+    }
+    if (load && !load.useSecondaryAxis) {
+      for (const value of load.byKey.values()) {
         if (value > primMaxRaw) primMaxRaw = value
       }
     }
@@ -292,16 +316,25 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
 
     primaryDomain = [primMin, primMax]
 
-    if (solar?.useSecondaryAxis) {
-      let solarMaxRaw = 0
-      for (const value of solar.byKey.values()) {
-        if (value > solarMaxRaw) solarMaxRaw = value
+    if (solar?.useSecondaryAxis || load?.useSecondaryAxis) {
+      // Shared kW axis - solar and load are both plotted on it (yAxisId="solar") when either
+      // needs a secondary axis, so its max has to fit whichever curve reaches higher.
+      let kwMaxRaw = 0
+      if (solar?.useSecondaryAxis) {
+        for (const value of solar.byKey.values()) {
+          if (value > kwMaxRaw) kwMaxRaw = value
+        }
       }
-      const solarMax = niceCeil(solarMaxRaw || 1)
+      if (load?.useSecondaryAxis) {
+        for (const value of load.byKey.values()) {
+          if (value > kwMaxRaw) kwMaxRaw = value
+        }
+      }
+      const solarMax = niceCeil(kwMaxRaw || 1)
       solarDomain = [alignedFloor(solarMax), solarMax]
       // Explicit ticks, same reasoning as BATTERY_TICKS below - without this, Recharts' own
       // "nice" tick step spans the whole domain including the invisible negative floor, which
-      // surfaces a negative tick (e.g. "-6") even though solar itself never goes negative.
+      // surfaces a negative tick (e.g. "-6") even though solar/load themselves never go negative.
       solarTicks = [0, solarMax / 4, solarMax / 2, (solarMax * 3) / 4, solarMax]
     }
 
@@ -338,6 +371,7 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
     ...(metric === 'cost' ? [{ label: 'Std charge', color: 'var(--chart-stdchg)' }] : []),
     ...(solar ? [{ label: solarSeriesName, color: 'var(--chart-solar)' }] : []),
     ...(battery ? [{ label: BATTERY_SERIES_NAME, color: 'var(--chart-battery)' }] : []),
+    ...(load ? [{ label: LOAD_SERIES_NAME, color: 'var(--chart-load)' }] : []),
   ]
 
   const hasAnyMissing = data.some((point) => meterPoints.some((mp) => point[missingKey(mp.mpan)]))
@@ -362,7 +396,7 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
             tickFormatter={(value: number) => (metric === 'kwh' ? `${roundTick(value)}` : `£${roundTick(value)}`)}
             width={56}
           />
-          {solar?.useSecondaryAxis && (
+          {(solar?.useSecondaryAxis || load?.useSecondaryAxis) && (
             <YAxis
               yAxisId="solar"
               orientation="right"
@@ -392,6 +426,7 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
               formatter={(value, name) => {
                 if (solar && name === solarSeriesName) return [formatSolarValue(Number(value), solar.unit), name]
                 if (battery && name === BATTERY_SERIES_NAME) return [formatBatteryValue(Number(value)), name]
+                if (load && name === LOAD_SERIES_NAME) return [formatLoadValue(Number(value)), name]
                 return [formatValue(Number(value), metric), name]
               }}
               contentStyle={{
@@ -513,6 +548,19 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
               connectNulls={false}
               isAnimationActive={false}
               name={BATTERY_SERIES_NAME}
+            />
+          )}
+          {load && (
+            <Line
+              yAxisId={load.useSecondaryAxis ? 'solar' : undefined}
+              type="monotone"
+              dataKey="loadValue"
+              stroke="var(--chart-load)"
+              strokeWidth={3}
+              dot={false}
+              connectNulls={false}
+              isAnimationActive={false}
+              name={LOAD_SERIES_NAME}
             />
           )}
         </ComposedChart>

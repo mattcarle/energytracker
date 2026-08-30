@@ -160,6 +160,8 @@ export default function UsageByDay() {
       solarUnit="kW"
       batteryByKey={solar.batteryByKey}
       batteryAvailable={solar.available}
+      loadByKey={solar.loadByKey}
+      loadAvailable={solar.available}
     />
   )
 }

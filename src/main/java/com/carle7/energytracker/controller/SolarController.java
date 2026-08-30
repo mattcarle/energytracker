@@ -149,7 +149,11 @@ public class SolarController {
     }
 
     private static PowerPoint toPowerPoint(MixDataPointDto dto) {
-        return new PowerPoint(dto.time, dto.ppv != null ? BigDecimal.valueOf(dto.ppv) : null, dto.soc);
+        return new PowerPoint(
+                dto.time,
+                dto.ppv != null ? BigDecimal.valueOf(dto.ppv) : null,
+                dto.soc,
+                dto.plocalLoadTotal != null ? BigDecimal.valueOf(dto.plocalLoadTotal) : null);
     }
 
     private static BigDecimal parseBigDecimal(String value) {
@@ -316,11 +320,14 @@ public class SolarController {
         private final BigDecimal powerWatts;
         // Battery state of charge, 0-100. Null when the device didn't report it for this point.
         private final Integer batteryPercent;
+        // House load consumption power, Watts. Null when the device didn't report it.
+        private final BigDecimal loadWatts;
 
-        public PowerPoint(String time, BigDecimal powerWatts, Integer batteryPercent) {
+        public PowerPoint(String time, BigDecimal powerWatts, Integer batteryPercent, BigDecimal loadWatts) {
             this.time = time;
             this.powerWatts = powerWatts;
             this.batteryPercent = batteryPercent;
+            this.loadWatts = loadWatts;
         }
 
         public String getTime() {
@@ -333,6 +340,10 @@ public class SolarController {
 
         public Integer getBatteryPercent() {
             return batteryPercent;
+        }
+
+        public BigDecimal getLoadWatts() {
+            return loadWatts;
         }
     }
 
