@@ -1,7 +1,9 @@
 # Energy Tracker
 
 A Spring Boot REST API and React UI for tracking electricity/gas consumption via the
-[Octopus Energy API](https://developer.octopus.energy/docs/api/).
+[Octopus Energy API](https://developer.octopus.energy/docs/api/), with optional solar
+generation, battery state of charge, and house load tracking via a Growatt solar
+inverter's official OpenAPI v1.
 
 ## Architecture
 
@@ -12,37 +14,47 @@ processes with the frontend proxying API calls to the backend.
 
 ```
 Octopus Energy API  <-->  OctopusService  -->  H2 database
-                               |
-                          Controllers (/api/*)
-                               |
-                          React SPA (frontend/)
+                                                     |
+Growatt OpenAPI      <-->  GrowattService  -->  H2 database
+                                                     |
+                                              Controllers (/api/*)
+                                                     |
+                                              React SPA (frontend/)
 ```
 
 ### Backend (`src/main/java/com/carle7/energytracker`)
 
 - **`controller/`** — REST endpoints under `/api/*` (agreements, meters, usage, standing
-  charges, tariffs, users, auth, data load/integrity).
+  charges, tariffs, users, auth, data load/integrity, solar/battery/load, Growatt settings).
 - **`service/OctopusService.java`** — integrates with the Octopus Energy API (via
   `RestTemplate` with Basic Auth), parses the responses, and persists them.
+- **`service/GrowattService.java`** / **`GrowattApiService.java`** — the same pattern for the
+  Growatt OpenAPI v1: resolves the account's plant/device, persists daily solar generation
+  (kWh) to `SOLAR_GENERATION`, and proxies live intraday PV power, battery state of charge, and
+  house load consumption straight through (not persisted — see
+  [Growatt integration](#growatt-integration-optional) below).
 - **`repository/`** — Spring Data JPA repositories.
 - **`model/`** — JPA entities: `Agreement`, `Meter`, `MeterPoint`, `Usage`, `StandingCharge`,
-  `UnitRate`, `User`, `OctopusCredentials`, etc.
+  `UnitRate`, `User`, `OctopusCredentials`, `GrowattCredentials`, `SolarGeneration`, etc.
 - **`security/`** — Spring Security session-cookie authentication.
 - **`config/`**, **`dto/`** — application configuration and data-transfer objects.
 
 Data flow: the external Octopus Energy API is polled by `OctopusService`, which stores
 agreements, meters, usage readings, standing charges and unit rates in an H2 database.
 `UsageController` and friends expose that data (by half-hour, day, week, month and year) to
-the frontend over REST.
+the frontend over REST. `GrowattService` does the equivalent for solar generation, and
+`SolarController` exposes it (plus the live battery/load figures) alongside the usage data.
 
 **Authentication**: on first run, with no `ADMIN` user present, the app requires a one-off
 setup — an admin password plus the Octopus account number and API auth token (this also
-triggers an initial data load). The Octopus account number/token are stored in the
-`OCTOPUS_CREDENTIALS` table, not in a properties file. The admin can then add/remove other
-users, who must change their password on first login.
+triggers an initial data load), followed by an optional second step to enter a Growatt API
+token (skippable, and configurable later — see below). The Octopus/Growatt credentials are
+stored in the `OCTOPUS_CREDENTIALS`/`GROWATT_CREDENTIALS` tables, not in a properties file.
+The admin can then add/remove other users, who must change their password on first login.
 
 **Configuration**:
 - `octopus.properties` — Octopus Energy API base URL and meter config.
+- `growatt.properties` — Growatt OpenAPI v1 base URL.
 - `application.properties` — settings common to every environment (JPA/Hibernate, H2 driver
   credentials). Which profile is active — `dev` or `prod` — is also set here, via
   `spring.profiles.active` (defaults to `dev`; override for a real deployment).
@@ -51,14 +63,46 @@ users, who must change their password on first login.
   on. See [Running in production](#running-in-production) below for what `prod` changes.
 - `schema.sql` — database schema initialization.
 
+### Growatt integration (optional)
+
+If you don't have a Growatt inverter, skip the second setup step (or never fill it in) and the
+app works exactly as it did with Octopus alone — every Growatt-dependent piece of UI (the
+Solar/Battery/Load checkboxes on the Usage pages, the "Manage Growatt Data" admin page) simply
+doesn't appear until a token is configured.
+
+With a token configured, the app tracks three things from the inverter, all sourced from
+Growatt's `device/mix/mix_data` telemetry:
+- **Solar generation** — daily totals (kWh) are persisted to `SOLAR_GENERATION` and shown
+  alongside usage on the Week/Month/Year pages; the Day page instead overlays the live intraday
+  power curve (kW), since Growatt only exposes that at 5-minute resolution, not as a
+  backfillable daily history.
+- **Battery state of charge** (%) and **house load consumption** (kW) — Day page only, both
+  live intraday curves proxied straight from Growatt rather than persisted, for the same reason
+  as the solar power curve above.
+
+Each of Solar/Battery/Load has its own independent checkbox on the Usage pages. The Growatt
+account's plant and device are resolved automatically from the token — no plant ID or device
+serial number needs to be entered manually. The token itself can be set (or changed) any time
+from **Admin → Manage Growatt Data**, which also has a "Load Solar Data Now" button for a
+manual refresh. Both Octopus and Growatt otherwise refresh automatically once a day, at 02:00
+Europe/London (`app.startup-usage-load.enabled` / `app.startup-solar-load.enabled` control
+whether they also do an initial load on application startup — on by default in `prod`, off in
+`dev`).
+
 ### Frontend (`frontend/`)
 
 A React 19 + TypeScript SPA built with Vite.
 
-- **`src/pages/`** — screens: login/setup/change-password, manage users, manage data, and
-  usage views by half-hour/day/week/month/year.
+- **`src/pages/`** — screens: login/setup/change-password, manage users, manage Octopus data,
+  manage Growatt data, and usage views by half-hour/day/week/month/year (each overlaying
+  Solar/Battery/Load when Growatt is configured — see
+  [Growatt integration](#growatt-integration-optional) above).
 - **`src/components/`** — shared UI (charts, modals).
 - **`src/api/`** — typed HTTP client for the backend `/api/*` endpoints.
+
+The default landing page is Usage by Day, on the most recent day with a complete set of
+half-hourly data — it steps back a day at a time past any not-yet-fully-synced day(s) rather
+than showing a partial one.
 
 In dev mode, Vite proxies requests to `/energytracker/api` through to `http://localhost:8080`
 (see `frontend/vite.config.ts`), so the backend must be running for the UI to have data.
@@ -89,7 +133,8 @@ mvnw.cmd spring-boot:run          # Windows
 This starts the API on **http://localhost:8080** using the `dev` profile (H2 database file at
 `~/h2db/energytracker`). On first run, no admin user exists yet — open the app and follow the
 setup wizard to create an admin password and enter your Octopus Energy account number and API
-auth token.
+auth token (and, optionally, a Growatt API token — skippable, see
+[Growatt integration](#growatt-integration-optional) above).
 
 Useful backend URLs (dev only — both are disabled under the `prod` profile):
 - API root: http://localhost:8080/api
@@ -248,8 +293,8 @@ deletes it — avoid that unless you actually intend to wipe all data.
 ### Running a second, independent instance
 
 `docker-compose.yml` also defines `app2`/`caddy2` — a second instance of this same app (own
-database in the `h2-data-2` volume, own Octopus account/credentials entered via its own setup
-wizard) sharing the domain at `/energytracker2`, alongside the primary instance at
+database in the `h2-data-2` volume, own Octopus and Growatt account/credentials entered via its
+own setup wizard) sharing the domain at `/energytracker2`, alongside the primary instance at
 `/energytracker`. What differs from `app`/`caddy`:
 
 - `app2`'s `SPRING_DATASOURCE_URL` points at a separate database file, and its `APP_BASE_PATH`
