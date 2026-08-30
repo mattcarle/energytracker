@@ -31,7 +31,7 @@ const USAGE_PAGES: { page: UsagePage; label: string }[] = [
 function App() {
   const [phase, setPhase] = useState<AuthPhase>('loading')
   const [user, setUser] = useState<AuthUser | null>(null)
-  const [page, setPage] = useState<Page>('usage-month')
+  const [page, setPage] = useState<Page>('usage-day')
   const [usageMenuOpen, setUsageMenuOpen] = useState(false)
   const [adminMenuOpen, setAdminMenuOpen] = useState(false)
   // Whether any tariff bills electricity at separate Day/Night rates but hasn't had its
@@ -117,7 +117,7 @@ function App() {
   }, [usageMenuOpen, adminMenuOpen])
 
   // The mobile nav has no Admin entry point at all, so a user (or window resized down) sitting
-  // on an admin page would otherwise be stranded with no way back - bounce to Usage by month.
+  // on an admin page would otherwise be stranded with no way back - bounce to Usage by day.
   // Skipped while Day/Night setup is incomplete: that redirect (below) is state-driven rather
   // than a nav click, and needs to stick on mobile too.
   useEffect(() => {
@@ -126,7 +126,7 @@ function App() {
       isMobile &&
       (page === 'manage-data' || page === 'manage-growatt-data' || page === 'manage-users' || page === 'change-password-settings')
     ) {
-      setPage('usage-month')
+      setPage('usage-day')
     }
   }, [isMobile, page, needsDayAndNightSetup])
 
@@ -155,7 +155,7 @@ function App() {
   function handleLogout() {
     logout().finally(() => {
       setUser(null)
-      setPage('usage-month')
+      setPage('usage-day')
       setPhase('login')
       setNeedsDayAndNightSetup(false)
       setShowDayAndNightDialog(false)

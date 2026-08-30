@@ -48,14 +48,35 @@ function todayIso(): string {
   return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
 }
 
-function hasAnyUsage(rows: { byMpan: Record<string, { kwh: number; total: number }> }[]): boolean {
-  return rows.some((row) => Object.values(row.byMpan).some((f) => f.kwh !== 0 || f.total !== 0))
+// A "real" reading for a half-hour has intervalCount > 0 (a row actually came back for that
+// key) and missingIntervalCount === 0 (it wasn't a data-integrity-check placeholder standing in
+// for a half-hour Octopus never reported) - see MpanFigures. A key with no entry at all in
+// byMpan (Octopus hasn't published it yet) counts the same as one flagged missing: either way,
+// the day isn't complete yet.
+function isRealHalfHour(figures: { intervalCount: number; missingIntervalCount: number } | undefined): boolean {
+  return figures !== undefined && figures.intervalCount > 0 && figures.missingIntervalCount === 0
+}
+
+// Every meter point needs a real reading for every one of the day's 48 half-hour periods -
+// checked per mpan (not "any mpan") so a lagging meter (see the per-mpan resume-point logic in
+// OctopusService.loadUsageData) still causes the default view to step back, rather than landing
+// on a day where only some meters are complete.
+function hasFullDayOfData(
+  rows: { key: string; byMpan: Record<string, { intervalCount: number; missingIntervalCount: number }> }[],
+  meterPoints: { mpan: string }[] | null,
+): boolean {
+  if (!meterPoints || meterPoints.length === 0) return false
+  const rowByKey = new Map(rows.map((row) => [row.key, row]))
+  return meterPoints.every((mp) =>
+    EXPECTED_KEYS.every((key) => isRealHalfHour(rowByKey.get(key)?.byMpan[mp.mpan])),
+  )
 }
 
 // Different meters on the same account can lag by a different number of days, so there's no
 // single "latest" timestamp to trust - instead this walks backward from today one day at a time
-// until it lands on a day that actually has usage, which self-corrects regardless of which
-// meter is behind. Capped so an account with no data at all doesn't walk back forever.
+// until it lands on a day that actually has a full set of half-hour data, which self-corrects
+// regardless of which meter is behind. Capped so an account with no data at all doesn't walk
+// back forever.
 const MAX_AUTO_STEPS = 60
 
 export default function UsageByDay() {
@@ -88,7 +109,7 @@ export default function UsageByDay() {
       return
     }
     if (!rows) return
-    if (hasAnyUsage(rows)) {
+    if (hasFullDayOfData(rows, meterPoints)) {
       setAutoStepping(false)
       return
     }
@@ -98,7 +119,7 @@ export default function UsageByDay() {
     }
     autoStepCount.current += 1
     setDate((d) => addDays(d, -1))
-  }, [rows, dateChangedByUser])
+  }, [rows, meterPoints, dateChangedByUser])
 
   // While still auto-stepping backward looking for a day with data, show "loading" rather than
   // a series of "no usage data for X" flashes for each empty day it passes through.
