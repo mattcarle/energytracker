@@ -203,6 +203,14 @@ export default function UsagePeriodView({
     [meterPoints, selectedMpans],
   )
 
+  // Split out for the checkbox row below - gas is rendered last there (after Solar/Battery/Load
+  // too), regardless of where it falls in the API's own meterPoints order.
+  const electricityMeterPoints = useMemo(
+    () => meterPoints?.filter((mp) => mp.meterType !== 'GAS') ?? [],
+    [meterPoints],
+  )
+  const gasMeterPoints = useMemo(() => meterPoints?.filter((mp) => mp.meterType === 'GAS') ?? [], [meterPoints])
+
   const totalsByMpan = useMemo(() => {
     if (!rows) return null
     const totals = new Map<string, MpanFigures>()
@@ -466,7 +474,9 @@ export default function UsagePeriodView({
 
       {((meterPoints && meterPoints.length > 0) || solarAvailable || batteryAvailable || loadAvailable) && (
         <div className="usage-page__mpan-toggles">
-          {meterPoints?.map((mp) => (
+          {/* Gas rendered last (see gasMeterPoints below), after Solar/Battery/Load too - not
+              just after the electricity ones - so it's the final checkbox in the row. */}
+          {electricityMeterPoints.map((mp) => (
             <label key={mp.mpan} className="usage-page__mpan-toggle">
               <input
                 type="checkbox"
@@ -494,6 +504,16 @@ export default function UsagePeriodView({
               Load
             </label>
           )}
+          {gasMeterPoints.map((mp) => (
+            <label key={mp.mpan} className="usage-page__mpan-toggle">
+              <input
+                type="checkbox"
+                checked={selectedMpans?.has(mp.mpan) ?? true}
+                onChange={() => toggleMpan(mp.mpan)}
+              />
+              {meterPointLabel(mp)}
+            </label>
+          ))}
         </div>
       )}
 
