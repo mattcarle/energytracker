@@ -17,6 +17,7 @@ import java.math.BigDecimal;
 import java.net.URI;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -28,6 +29,13 @@ import static java.util.Optional.ofNullable;
 public class OctopusApiService {
 
     private static final Logger logger = LoggerFactory.getLogger(OctopusApiService.class);
+
+    // periodFrom/periodTo passed into fetchConsumptionData are local London wall-clock time
+    // (they come from Usage.intervalTo / LocalDateTime.now(), both naive local values) - must be
+    // converted through this zone, not assumed already UTC, or every request built during BST
+    // (UTC+1) ends up asking Octopus for a window shifted an hour into the future, permanently
+    // skipping the true next hour's data on every subsequent refresh.
+    private static final ZoneId LONDON_ZONE = ZoneId.of("Europe/London");
 
     @Autowired
     private OctopusConfig octopusConfig;
@@ -50,8 +58,8 @@ public class OctopusApiService {
                 meterPointsSegment,
                 mpan,
                 meterSerial,
-                periodFrom.atOffset(ZoneOffset.UTC).toString(),
-                periodTo.atOffset(ZoneOffset.UTC).toString()
+                periodFrom.atZone(LONDON_ZONE).withZoneSameInstant(ZoneOffset.UTC).toString(),
+                periodTo.atZone(LONDON_ZONE).withZoneSameInstant(ZoneOffset.UTC).toString()
         );
 
         String basicAuth = Base64.getEncoder().encodeToString((credentials.getAuthToken() + ":").getBytes());

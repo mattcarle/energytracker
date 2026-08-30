@@ -116,12 +116,16 @@ class OctopusServiceDeleteAllTest {
     }
 
     @Test
-    void loadUsageData_deleteAllFalse_resumesImmediatelyAfterLatestIntervalPerMpan_andSkipsFullDeletion() {
+    void loadUsageData_deleteAllFalse_resumesFromStartOfPreviousDayPerMpan_andSkipsFullDeletion() {
         MeterPoint meterPoint = new MeterPoint("MPAN1", false, "ELEC");
         meterPoint.setId(1L);
         Meter meter = new Meter("SERIAL1", 1L);
 
         LocalDateTime latestIntervalTo = LocalDateTime.parse("2026-01-01T13:30:00");
+        // Resuming from the start of the day *before* the latest reading (not the exact next
+        // half-hour after it) is what lets a skipped half-hour - e.g. from a DST boundary -
+        // self-heal via overwrite on the next refresh, rather than being permanently skipped.
+        LocalDateTime expectedPeriodFrom = LocalDateTime.parse("2025-12-31T00:00:00");
         UsageDateRangeProjection dateRange = mock(UsageDateRangeProjection.class);
         when(dateRange.getMpan()).thenReturn("MPAN1");
         when(dateRange.getLatest()).thenReturn(latestIntervalTo);
@@ -129,7 +133,7 @@ class OctopusServiceDeleteAllTest {
         when(usageRepository.findDateRangeByMpan()).thenReturn(List.of(dateRange));
         when(meterPointRepository.findAll()).thenReturn(List.of(meterPoint));
         when(meterRepository.findByMeterPointId(1L)).thenReturn(List.of(meter));
-        when(octopusApiService.fetchConsumptionData(eq("ELEC"), eq("MPAN1"), eq("SERIAL1"), eq(latestIntervalTo), any()))
+        when(octopusApiService.fetchConsumptionData(eq("ELEC"), eq("MPAN1"), eq("SERIAL1"), eq(expectedPeriodFrom), any()))
                 .thenReturn(new OctopusApiService.ConsumptionResponse());
         when(unitRateByHalfHourRepository.findFirstByOrderByValidFromAsc()).thenReturn(Optional.empty());
         when(unitRateByHalfHourRepository.findFirstByOrderByValidFromDesc()).thenReturn(Optional.empty());
@@ -137,7 +141,8 @@ class OctopusServiceDeleteAllTest {
         octopusService.loadUsageData(false);
 
         verify(usageRepository, never()).deleteAllInBatch();
-        verify(octopusApiService).fetchConsumptionData(eq("ELEC"), eq("MPAN1"), eq("SERIAL1"), eq(latestIntervalTo), any());
+        verify(usageRepository).deleteByMpanAndIntervalFromGreaterThanEqual("MPAN1", expectedPeriodFrom);
+        verify(octopusApiService).fetchConsumptionData(eq("ELEC"), eq("MPAN1"), eq("SERIAL1"), eq(expectedPeriodFrom), any());
     }
 
     @Test
@@ -154,6 +159,8 @@ class OctopusServiceDeleteAllTest {
 
         LocalDateTime elecLatest = LocalDateTime.parse("2026-01-05T00:00:00");
         LocalDateTime gasLatest = LocalDateTime.parse("2026-01-01T00:00:00");
+        LocalDateTime elecExpectedPeriodFrom = LocalDateTime.parse("2026-01-04T00:00:00");
+        LocalDateTime gasExpectedPeriodFrom = LocalDateTime.parse("2025-12-31T00:00:00");
         UsageDateRangeProjection elecRange = mock(UsageDateRangeProjection.class);
         when(elecRange.getMpan()).thenReturn("MPAN-ELEC");
         when(elecRange.getLatest()).thenReturn(elecLatest);
@@ -172,7 +179,7 @@ class OctopusServiceDeleteAllTest {
 
         octopusService.loadUsageData(false);
 
-        verify(octopusApiService).fetchConsumptionData(eq("ELEC"), eq("MPAN-ELEC"), eq("SERIAL-ELEC"), eq(elecLatest), any());
-        verify(octopusApiService).fetchConsumptionData(eq("GAS"), eq("MPAN-GAS"), eq("SERIAL-GAS"), eq(gasLatest), any());
+        verify(octopusApiService).fetchConsumptionData(eq("ELEC"), eq("MPAN-ELEC"), eq("SERIAL-ELEC"), eq(elecExpectedPeriodFrom), any());
+        verify(octopusApiService).fetchConsumptionData(eq("GAS"), eq("MPAN-GAS"), eq("SERIAL-GAS"), eq(gasExpectedPeriodFrom), any());
     }
 }

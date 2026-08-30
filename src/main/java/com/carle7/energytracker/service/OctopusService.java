@@ -398,10 +398,13 @@ public class OctopusService {
             // lag, so the resume point has to be worked out per mpan rather than once globally -
             // otherwise a single shared cutover point (anchored to whichever meter happens to be
             // furthest along) permanently skips the backlog of whichever meter is behind it. Each
-            // meter resumes from the half-hour immediately after its own latest stored reading
-            // (MAX(interval_to)), not the start of that reading's calendar day, since Octopus
-            // typically hasn't published a full day's data yet by the time this runs and
-            // re-pulling from the day's start would just re-request periods it already has.
+            // meter resumes from the start of the calendar day *before* its own latest stored
+            // reading (not just the next half-hour after it) and re-fetches through to now,
+            // overwriting that overlap - rather than resuming from the exact next half-hour,
+            // which left a permanent, non-self-healing gap whenever a DST boundary (or any other
+            // transient mismatch) caused a half-hour to be skipped: the next refresh's resume
+            // point was computed from the same never-advancing "latest", so a missed half-hour
+            // was never re-requested.
             Map<String, LocalDateTime> latestByMpan = usageRepository.findDateRangeByMpan().stream()
                     .collect(java.util.stream.Collectors.toMap(
                             UsageDateRangeProjection::getMpan, UsageDateRangeProjection::getLatest));
@@ -410,10 +413,11 @@ public class OctopusService {
 
             int usageCount = 0;
             for (MeterPoint meterPoint : meterPointRepository.findAll()) {
-                LocalDateTime periodFrom = ofNullable(latestByMpan.get(meterPoint.getMpan()))
-                        .or(() -> agreementRepository.findByMeterPointIdOrderByValidFrom(meterPoint.getId())
-                                .stream().findFirst().map(Agreement::getValidFrom))
-                        .orElse(null);
+                LocalDateTime latest = latestByMpan.get(meterPoint.getMpan());
+                LocalDateTime periodFrom = latest != null
+                        ? latest.toLocalDate().minusDays(1).atStartOfDay()
+                        : agreementRepository.findByMeterPointIdOrderByValidFrom(meterPoint.getId())
+                                .stream().findFirst().map(Agreement::getValidFrom).orElse(null);
 
                 if (periodFrom == null) {
                     logger.warn("No existing usage data and no agreements found for mpan {}; skipping", meterPoint.getMpan());
@@ -421,6 +425,12 @@ public class OctopusService {
                 }
                 if (!periodFrom.isBefore(periodTo)) {
                     continue;
+                }
+
+                // A no-op on a meter's first-ever backfill (latest == null), since nothing in
+                // [periodFrom, ...) exists yet to overlap.
+                if (latest != null) {
+                    usageRepository.deleteByMpanAndIntervalFromGreaterThanEqual(meterPoint.getMpan(), periodFrom);
                 }
 
                 for (Meter meter : meterRepository.findByMeterPointId(meterPoint.getId())) {
