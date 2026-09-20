@@ -5,7 +5,6 @@ import com.carle7.energytracker.model.SolarGeneration;
 import com.carle7.energytracker.repository.SolarDateRangeProjection;
 import com.carle7.energytracker.repository.SolarGenerationRepository;
 import com.carle7.energytracker.service.GrowattApiService.EnergyPointDto;
-import com.carle7.energytracker.service.GrowattApiService.MixDataPointDto;
 import com.carle7.energytracker.service.GrowattApiService.PlantDataDto;
 import com.carle7.energytracker.service.GrowattApiService.PlantDto;
 import org.slf4j.Logger;
@@ -175,21 +174,32 @@ public class GrowattService {
     // endpoint reports inverter AC output rather than isolated PV. Lazily resolves deviceSn via
     // loadPlant() the same way loadSolarData lazily resolves plantId, for credentials saved
     // before this device-level call existed.
-    public List<MixDataPointDto> getLivePowerCurve(LocalDate date) {
+    public GrowattApiService.MixDataResult getLivePowerCurve(LocalDate date) {
         GrowattCredentials credentials = growattCredentialsService.getCredentials();
         String deviceSn = credentials.getDeviceSn();
         if (deviceSn == null) {
             PlantLoadResult plantLoad = loadPlant();
             if (plantLoad.getError() != null) {
                 logger.error("Could not resolve Growatt device: {}", plantLoad.getError());
-                return null;
+                return new GrowattApiService.MixDataResult(null, plantLoad.getError());
             }
             deviceSn = growattCredentialsService.getCredentials().getDeviceSn();
             if (deviceSn == null) {
-                return null;
+                return new GrowattApiService.MixDataResult(null, "Could not resolve a Growatt device serial number");
             }
         }
-        return growattApiService.fetchMixData(deviceSn, date);
+
+        GrowattApiService.MixDataResult result = growattApiService.fetchMixData(deviceSn, date);
+        // Growatt intermittently returns nothing for a single mix_data call - confirmed live,
+        // e.g. an empty-string "data" field (see GrowattApiService.configureGrowattObjectMapper)
+        // that parses to no points at all. One immediate retry smooths over that transient miss
+        // without masking a genuine outage - a real credentials/device problem already returned
+        // above, and a second consecutive empty result (whether or not it carries its own error
+        // message) is treated as the real answer.
+        if (result.points == null || result.points.isEmpty()) {
+            result = growattApiService.fetchMixData(deviceSn, date);
+        }
+        return result;
     }
 
     public PlantDataDto getLiveStatus() {

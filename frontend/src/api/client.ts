@@ -15,6 +15,7 @@ import type {
   SolarByMonthResponse,
   SolarDateRange,
   SolarHourlyResponse,
+  SolarLiveStatus,
   SolarLoadResult,
   StandingChargeByDayEntry,
   UsageByDayResponse,
@@ -199,6 +200,10 @@ export function getSolarByMonth(fromDate: string, toDate: string): Promise<Solar
 export function getSolarHourly(date: string): Promise<SolarHourlyResponse> {
   const params = new URLSearchParams({ date })
   return getJson(`/api/solar/hourly?${params.toString()}`)
+}
+
+export function getSolarLive(): Promise<SolarLiveStatus> {
+  return getJson('/api/solar/live')
 }
 
 export function getGrowattCredentialsStatus(): Promise<GrowattCredentialsStatus> {

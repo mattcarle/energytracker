@@ -456,7 +456,7 @@ const EMPTY_SOLAR: SolarOverlayData = {
 // /api/solar/date-range instead (plain authenticated, like /api/usage/**): a non-empty result
 // means at least one plant has ever been backfilled, independent of whatever date range the
 // current page happens to be showing.
-async function solarIsAvailable(): Promise<boolean> {
+export async function solarIsAvailable(): Promise<boolean> {
   const ranges = await getSolarDateRanges()
   return ranges.length > 0
 }

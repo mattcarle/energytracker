@@ -4,10 +4,14 @@ import com.carle7.energytracker.model.SolarGeneration;
 import com.carle7.energytracker.repository.SolarByPeriodProjection;
 import com.carle7.energytracker.repository.SolarDateRangeProjection;
 import com.carle7.energytracker.repository.SolarGenerationRepository;
+import com.carle7.energytracker.service.GrowattApiService;
 import com.carle7.energytracker.service.GrowattApiService.MixDataPointDto;
 import com.carle7.energytracker.service.GrowattApiService.PlantDataDto;
 import com.carle7.energytracker.service.GrowattCredentialsService;
 import com.carle7.energytracker.service.GrowattService;
+import com.carle7.energytracker.service.OctopusService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -21,6 +25,8 @@ import java.util.List;
 
 @RestController
 public class SolarController {
+    private static final Logger logger = LoggerFactory.getLogger(SolarController.class);
+
 
     @Autowired
     private SolarGenerationRepository solarGenerationRepository;
@@ -111,7 +117,7 @@ public class SolarController {
     // inverter AC output (mixed with battery activity), not isolated PV.
     @GetMapping("/api/solar/hourly")
     public SolarHourlyResponse getSolarHourly(@RequestParam LocalDate date) {
-        List<MixDataPointDto> data = growattService.getLivePowerCurve(date);
+        List<MixDataPointDto> data = growattService.getLivePowerCurve(date).points;
         if (data == null) {
             return new SolarHourlyResponse(List.of());
         }
@@ -128,6 +134,7 @@ public class SolarController {
     // Live proxy, not persisted.
     @GetMapping("/api/solar/status")
     public SolarStatusResponse getSolarStatus() {
+        logger.info("Fetching solar status data");
         PlantDataDto data = growattService.getLiveStatus();
         if (data == null) {
             return new SolarStatusResponse(null, null, null, null, null, null);
@@ -139,6 +146,53 @@ public class SolarController {
                 parseBigDecimal(data.total_energy),
                 BigDecimal.valueOf(data.current_power),
                 data.last_update_time);
+    }
+
+    // Live proxy for the Live tab, not persisted - the most recent of today's mix_data points
+    // (Growatt's own ~5-minute reporting cadence, same source/granularity getSolarHourly's curve
+    // is built from - there's no separate lower-latency "instant status" call in the V1 API this
+    // app uses). gridWatts/batteryWatts follow the same sign convention as import/export usage
+    // elsewhere in this app (see useUsagePeriodData on the frontend): positive means energy
+    // flowing in (importing from grid / charging the battery), negative means flowing out
+    // (exporting to grid / discharging the battery).
+    @GetMapping("/api/solar/live")
+    public SolarLiveResponse getSolarLive() {
+        logger.info("Fetching solar live data");
+
+        GrowattApiService.MixDataResult result = growattService.getLivePowerCurve(LocalDate.now());
+        List<MixDataPointDto> data = result.points;
+        // Time is "yyyy-MM-dd HH:mm:ss", fixed-width - see getSolarHourly's own comment on why
+        // plain string comparison both sorts and finds-the-max correctly here.
+        MixDataPointDto latest = data == null ? null : data.stream().max(Comparator.comparing(dto -> dto.time)).orElse(null);
+        if (latest == null) {
+            // result.error is null (not shown as an error) when Growatt legitimately has
+            // nothing to report yet (e.g. before today's first reading) - only a genuine
+            // failure (credentials/device problem, HTTP/parse error, or Growatt's own
+            // error_code) populates it. See GrowattApiService.MixDataResult.
+            return new SolarLiveResponse(null, null, null, null, null, null, null, result.error);
+        }
+        return new SolarLiveResponse(
+                toWatts(latest.ppv),
+                signedWatts(latest.pacToUserTotal, latest.pacToGridTotal),
+                toWatts(latest.plocalLoadTotal),
+                signedWatts(latest.pcharge1, latest.pdischarge1),
+                latest.soc,
+                latest.epvtoday != null ? BigDecimal.valueOf(latest.epvtoday) : null,
+                latest.time,
+                null);
+    }
+
+    private static BigDecimal toWatts(Double value) {
+        return value != null ? BigDecimal.valueOf(value) : null;
+    }
+
+    private static BigDecimal signedWatts(Double positive, Double negative) {
+        if (positive == null && negative == null) {
+            return null;
+        }
+        double p = positive != null ? positive : 0;
+        double n = negative != null ? negative : 0;
+        return BigDecimal.valueOf(p - n);
     }
 
     private String resolvePlantId() {
@@ -356,6 +410,63 @@ public class SolarController {
 
         public List<PowerPoint> getPoints() {
             return points;
+        }
+    }
+
+    public static class SolarLiveResponse {
+        private final BigDecimal solarWatts;
+        private final BigDecimal gridWatts;
+        private final BigDecimal loadWatts;
+        private final BigDecimal batteryWatts;
+        private final Integer batterySoc;
+        private final BigDecimal solarTodayKwh;
+        private final String time;
+        // Set only on a genuine Growatt API failure (see GrowattApiService.MixDataResult) - null
+        // otherwise, including when Growatt simply has nothing to report yet.
+        private final String error;
+
+        public SolarLiveResponse(BigDecimal solarWatts, BigDecimal gridWatts, BigDecimal loadWatts,
+                                  BigDecimal batteryWatts, Integer batterySoc, BigDecimal solarTodayKwh, String time, String error) {
+            this.solarWatts = solarWatts;
+            this.gridWatts = gridWatts;
+            this.loadWatts = loadWatts;
+            this.batteryWatts = batteryWatts;
+            this.batterySoc = batterySoc;
+            this.solarTodayKwh = solarTodayKwh;
+            this.time = time;
+            this.error = error;
+        }
+
+        public BigDecimal getSolarWatts() {
+            return solarWatts;
+        }
+
+        public BigDecimal getGridWatts() {
+            return gridWatts;
+        }
+
+        public BigDecimal getLoadWatts() {
+            return loadWatts;
+        }
+
+        public BigDecimal getBatteryWatts() {
+            return batteryWatts;
+        }
+
+        public Integer getBatterySoc() {
+            return batterySoc;
+        }
+
+        public BigDecimal getSolarTodayKwh() {
+            return solarTodayKwh;
+        }
+
+        public String getTime() {
+            return time;
+        }
+
+        public String getError() {
+            return error;
         }
     }
 

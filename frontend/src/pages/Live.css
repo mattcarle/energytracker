@@ -1,0 +1,145 @@
+.live-page {
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 12px 24px 20px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.live-page h1 {
+  font-size: 26px;
+  margin: 0;
+}
+
+.live-page__heading-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 12px;
+}
+
+.live-page__as-of {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.live-page__error {
+  color: #d64545;
+}
+
+.live-page__hero {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 24px;
+  margin-bottom: 8px;
+  background: var(--code-bg);
+  text-align: center;
+}
+
+.live-page__hero-label {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.live-page__hero-value {
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--chart-solar);
+  margin-top: 4px;
+}
+
+.live-page__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  column-gap: 16px;
+  row-gap: 10px;
+}
+
+.live-page__tile {
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 6px;
+  padding: 10px 18px;
+  background: var(--code-bg);
+}
+
+.live-page__tile--solar {
+  border-left-color: var(--chart-solar);
+}
+
+.live-page__tile--grid {
+  border-left-color: var(--chart-mpan-1);
+}
+
+.live-page__tile--load {
+  border-left-color: var(--chart-load);
+}
+
+.live-page__tile--battery {
+  border-left-color: var(--chart-battery);
+}
+
+.live-page__tile-label {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.live-page__tile-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-h);
+  margin-top: 3px;
+}
+
+.live-page__battery-bar {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 18px;
+  margin-top: 10px;
+  background: var(--code-bg);
+}
+
+.live-page__battery-bar-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.live-page__battery-bar-header span:first-child {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.live-page__battery-bar-header span:last-child {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.live-page__battery-bar-track {
+  width: 100%;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.live-page__battery-bar-fill {
+  height: 100%;
+  border-radius: 9px;
+  /* Colour is set inline (see Live.tsx's batterySocColor) since it depends on the charge level,
+     not just the theme. */
+  transition: width 0.4s ease, background-color 0.4s ease;
+}
+
+/* Same breakpoint as useIsMobile/UsagePage.css. Font sizes, padding and margins stay exactly as
+   set above - the only change is one tile per row instead of the desktop grid, so each card
+   keeps its full-size, easy-to-read appearance rather than shrinking to fit more per row. */
+@media (max-width: 640px) {
+  .live-page__grid {
+    grid-template-columns: 1fr;
+  }
+}

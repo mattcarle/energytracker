@@ -219,6 +219,26 @@ export interface SolarHourlyResponse {
   points: SolarPowerPoint[]
 }
 
+// Live tab snapshot - the most recent of today's mix_data points, all Watts except
+// solarTodayKwh. gridWatts/batteryWatts are signed: positive means energy flowing in
+// (importing from grid / charging the battery), negative means flowing out (exporting /
+// discharging) - same convention as import/export usage elsewhere in this app. Any field can be
+// null if Growatt hasn't reported anything yet today.
+export interface SolarLiveStatus {
+  solarWatts: number | null
+  gridWatts: number | null
+  loadWatts: number | null
+  batteryWatts: number | null
+  batterySoc: number | null
+  solarTodayKwh: number | null
+  // The device's own reported time for this reading ("yyyy-MM-dd HH:mm:ss"), not when the
+  // request was made - lets the UI show how stale the snapshot is.
+  time: string | null
+  // Set only on a genuine Growatt API failure (rate limiting, a bad token, an HTTP/parse error) -
+  // null otherwise, including when Growatt simply has nothing to report yet (not an error).
+  error: string | null
+}
+
 export interface SolarDateRange {
   plantId: string
   earliest: string

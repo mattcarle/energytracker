@@ -5,6 +5,10 @@ import com.carle7.energytracker.model.GrowattCredentials;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.cfg.CoercionAction;
+import com.fasterxml.jackson.databind.cfg.CoercionInputShape;
+import com.fasterxml.jackson.databind.type.LogicalType;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,7 +30,6 @@ import java.util.List;
 
 @Service
 public class GrowattApiService {
-
     private static final Logger logger = LoggerFactory.getLogger(GrowattApiService.class);
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ISO_LOCAL_DATE;
 
@@ -52,6 +55,32 @@ public class GrowattApiService {
     @Autowired
     private ObjectMapper objectMapper;
 
+    // A private copy of the shared ObjectMapper bean (not the bean itself, which
+    // OctopusApiService also uses) configured to tolerate one specific Growatt quirk: fields
+    // normally typed as a nested object (e.g. mix_data's "data") have been observed coming back
+    // as an empty string ("") rather than an object or null when Growatt has nothing to report
+    // for the requested window - confirmed live, see the ERROR log this was added to fix
+    // ("Cannot coerce empty String ... to MixDataData"). Jackson's default coercion rejects that
+    // outright; this copy treats an empty string as null for POJO-typed fields instead of
+    // failing the whole parse, without changing how OctopusApiService (or anything else sharing
+    // the injected bean) behaves.
+    private ObjectMapper growattObjectMapper;
+
+    @PostConstruct
+    private void initGrowattObjectMapper() {
+        growattObjectMapper = configureGrowattObjectMapper(objectMapper);
+    }
+
+    // Package-private (not private) so a test can assert the coercion behaviour directly,
+    // without needing a Spring context - same reasoning as UsageRepositoryImpl's package-private
+    // SQL templates.
+    static ObjectMapper configureGrowattObjectMapper(ObjectMapper base) {
+        ObjectMapper mapper = base.copy();
+        mapper.coercionConfigFor(LogicalType.POJO)
+                .setCoercion(CoercionInputShape.EmptyString, CoercionAction.AsNull);
+        return mapper;
+    }
+
     public PlantListResponse fetchPlantList() {
         String url = growattConfig.getBaseUrl() + "/plant/list";
         return get(url, PlantListResponse.class);
@@ -74,7 +103,12 @@ public class GrowattApiService {
     // pac/battery activity, while ppv correctly reads exactly 0 overnight). mix_data has no
     // `next`-URL pagination like Octopus, just a page/perpage the caller drives - looped here
     // until a short page or the reported count says there's no more for the day.
-    public List<MixDataPointDto> fetchMixData(String deviceSn, LocalDate date) {
+    // Returns the error message alongside the points (rather than just null like get()'s other
+    // callers get away with) so the Live tab can show the caller *why* nothing came back - see
+    // MixDataResult. A later page failing after earlier pages already succeeded still keeps
+    // "return what succeeded" behaviour (no error surfaced) - only a page-1 failure, with no
+    // data at all to fall back on, propagates its error.
+    public MixDataResult fetchMixData(String deviceSn, LocalDate date) {
         List<MixDataPointDto> allResults = new ArrayList<>();
         String dateStr = DATE_FORMAT.format(date);
         String url = growattConfig.getBaseUrl() + "/device/mix/mix_data";
@@ -87,9 +121,10 @@ public class GrowattApiService {
             params.add("perpage", String.valueOf(MIX_DATA_PER_PAGE));
             params.add("page", String.valueOf(page));
 
-            MixDataResponse response = post(url, params, MixDataResponse.class);
+            GrowattResult<MixDataResponse> result = post(url, params, MixDataResponse.class);
+            MixDataResponse response = result.body;
             if (response == null || response.data == null || response.data.datas == null) {
-                return page == 1 ? null : allResults;
+                return page == 1 ? new MixDataResult(null, result.error) : new MixDataResult(allResults, null);
             }
             allResults.addAll(response.data.datas);
             if (response.data.datas.size() < MIX_DATA_PER_PAGE || allResults.size() >= response.data.count) {
@@ -97,7 +132,7 @@ public class GrowattApiService {
             }
         }
 
-        return allResults;
+        return new MixDataResult(allResults, null);
     }
 
     // Chunks the requested range into <= MAX_DAY_QUERY_RANGE-day windows (the API enforces this
@@ -158,7 +193,7 @@ public class GrowattApiService {
 
             T parsed;
             try {
-                parsed = objectMapper.readValue(response.getBody(), responseType);
+                parsed = growattObjectMapper.readValue(response.getBody(), responseType);
             } catch (JsonProcessingException e) {
                 logger.error("Failed to parse response from {}: {}", url, e.getMessage(), e);
                 return null;
@@ -176,8 +211,12 @@ public class GrowattApiService {
     }
 
     // Device-level endpoints (mix_data, mix_last_data, etc.) are POSTed with form fields rather
-    // than GET query params - otherwise identical error/parsing handling to get() above.
-    private <T extends GrowattEnvelope> T post(String url, MultiValueMap<String, String> formParams, Class<T> responseType) {
+    // than GET query params - otherwise identical error/parsing handling to get() above, except
+    // this returns the failure reason instead of discarding it: fetchMixData's only caller
+    // (GrowattService.getLivePowerCurve, feeding the Live tab) needs to show it, unlike get()'s
+    // several callers, which don't - left untouched rather than widening this to every Growatt
+    // call this app makes.
+    private <T extends GrowattEnvelope> GrowattResult<T> post(String url, MultiValueMap<String, String> formParams, Class<T> responseType) {
         GrowattCredentials credentials = growattCredentialsService.getCredentials();
 
         HttpHeaders headers = new HttpHeaders();
@@ -193,25 +232,28 @@ public class GrowattApiService {
 
             if (!response.getStatusCode().is2xxSuccessful()) {
                 logger.error("API error from {}: {} {}", url, response.getStatusCode(), response.getBody());
-                return null;
+                return new GrowattResult<>(null, "Growatt API returned " + response.getStatusCode().value());
             }
 
             T parsed;
             try {
-                parsed = objectMapper.readValue(response.getBody(), responseType);
+                parsed = growattObjectMapper.readValue(response.getBody(), responseType);
             } catch (JsonProcessingException e) {
                 logger.error("Failed to parse response from {}: {}", url, e.getMessage(), e);
-                return null;
+                return new GrowattResult<>(null, "Failed to parse Growatt API response");
             }
 
             if (parsed.error_code != 0) {
                 logger.error("Growatt API error from {}: error_code={} error_msg={}", url, parsed.error_code, parsed.error_msg);
-                return null;
+                String message = parsed.error_msg != null && !parsed.error_msg.isBlank()
+                        ? parsed.error_msg
+                        : "Growatt API error " + parsed.error_code;
+                return new GrowattResult<>(null, message);
             }
-            return parsed;
+            return new GrowattResult<>(parsed, null);
         } catch (Exception e) {
             logger.error("Failed to post to {}: {}", url, e.getMessage(), e);
-            return null;
+            return new GrowattResult<>(null, e.getMessage() != null ? e.getMessage() : "Failed to reach Growatt API");
         }
     }
 
@@ -288,17 +330,60 @@ public class GrowattApiService {
     }
 
     // A real mix_data point carries roughly 150 device/BMS telemetry fields (confirmed live) -
-    // only `time`, `ppv` (actual PV panel power, zero overnight - unlike plant/power's `pac`,
-    // which mixes in battery activity), `soc` (battery state of charge, 0-100 - confirmed live
-    // tracking the pack's real charge level through a full day), and `plocalLoadTotal` (house
-    // load consumption power, Watts - confirmed live alongside its `elocalLoadToday`/
-    // `elocalLoadTotal` kWh accumulators) are needed here.
+    // only the following are needed here:
+    // - `time`, `ppv` (actual PV panel power, zero overnight - unlike plant/power's `pac`,
+    //   which mixes in battery activity), `soc` (battery state of charge, 0-100 - confirmed live
+    //   tracking the pack's real charge level through a full day), and `plocalLoadTotal` (house
+    //   load consumption power, Watts - confirmed live alongside its `elocalLoadToday`/
+    //   `elocalLoadTotal` kWh accumulators).
+    // - `pacToUserTotal`/`pacToGridTotal` (grid import/export power, Watts - exactly one is
+    //   nonzero at a time in practice) and `pcharge1`/`pdischarge1` (battery charge/discharge
+    //   power, Watts, same "exactly one nonzero" relationship) - added for the Live tab,
+    //   confirmed live via a temporary raw-response dump against the real account (see PR
+    //   history, not committed).
+    // - `epvtoday` (today's cumulative PV generation, kWh - confirmed live; yes, lowercase
+    //   unlike every other *Today field on this DTO family such as epv1Today/epv2Today, not a
+    //   typo here).
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class MixDataPointDto {
         public String time;
         public Double ppv;
         public Integer soc;
         public Double plocalLoadTotal;
+        public Double pacToUserTotal;
+        public Double pacToGridTotal;
+        public Double pcharge1;
+        public Double pdischarge1;
+        public Double epvtoday;
+    }
+
+    // fetchMixData's return type: `points` is null only when there's no data at all (including a
+    // fallback to an empty list never happening - see fetchMixData), in which case `error`
+    // carries why, straight from the failed call - a real Growatt error_msg when there was one,
+    // otherwise a description of the HTTP/parse failure. Both null together means the call
+    // legitimately succeeded with nothing to report (not an error - e.g. before the day's first
+    // reading), which callers should treat as "try again later", not "show this to the user".
+    public static class MixDataResult {
+        public final List<MixDataPointDto> points;
+        public final String error;
+
+        public MixDataResult(List<MixDataPointDto> points, String error) {
+            this.points = points;
+            this.error = error;
+        }
+    }
+
+    // get()/post()'s internal result - not used outside this class (get() itself still returns
+    // T directly/null on failure, unchanged; only post() was widened to carry its failure reason,
+    // see post()'s own comment for why).
+    private static class GrowattResult<T> {
+        final T body;
+        final String error;
+
+        GrowattResult(T body, String error) {
+            this.body = body;
+            this.error = error;
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

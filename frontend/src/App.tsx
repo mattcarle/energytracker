@@ -5,6 +5,7 @@ import Modal from './components/Modal'
 import { useIsMobile } from './hooks/useIsMobile'
 import ChangePassword from './pages/ChangePassword'
 import ChangePasswordSettings from './pages/ChangePasswordSettings'
+import Live from './pages/Live'
 import Login from './pages/Login'
 import ManageData from './pages/ManageData'
 import ManageGrowattData from './pages/ManageGrowattData'
@@ -18,7 +19,7 @@ import './App.css'
 
 type UsagePage = 'usage-day' | 'usage-week' | 'usage-month' | 'usage-year'
 type AdminPage = 'manage-data' | 'manage-growatt-data' | 'manage-users' | 'change-password-settings'
-type Page = UsagePage | AdminPage
+type Page = UsagePage | AdminPage | 'live'
 type AuthPhase = 'loading' | 'setup' | 'login' | 'change-password' | 'authenticated'
 
 const USAGE_PAGES: { page: UsagePage; label: string }[] = [
@@ -31,7 +32,7 @@ const USAGE_PAGES: { page: UsagePage; label: string }[] = [
 function App() {
   const [phase, setPhase] = useState<AuthPhase>('loading')
   const [user, setUser] = useState<AuthUser | null>(null)
-  const [page, setPage] = useState<Page>('usage-day')
+  const [page, setPage] = useState<Page>('live')
   const [usageMenuOpen, setUsageMenuOpen] = useState(false)
   const [adminMenuOpen, setAdminMenuOpen] = useState(false)
   // Whether any tariff bills electricity at separate Day/Night rates but hasn't had its
@@ -155,7 +156,7 @@ function App() {
   function handleLogout() {
     logout().finally(() => {
       setUser(null)
-      setPage('usage-day')
+      setPage('live')
       setPhase('login')
       setNeedsDayAndNightSetup(false)
       setShowDayAndNightDialog(false)
@@ -166,6 +167,11 @@ function App() {
     if (needsDayAndNightSetup) return
     setPage(target)
     setUsageMenuOpen(false)
+  }
+
+  function selectLive() {
+    if (needsDayAndNightSetup) return
+    setPage('live')
   }
 
   function selectAdminPage(target: AdminPage) {
@@ -203,6 +209,11 @@ function App() {
       <nav className="app-nav">
         <span className="app-nav__title">Energy Tracker</span>
         <div className="app-nav__links">
+          {!isMobile && !needsDayAndNightSetup && (
+            <button type="button" className={page === 'live' ? 'active' : ''} onClick={selectLive}>
+              Live
+            </button>
+          )}
           {!isMobile && !needsDayAndNightSetup && (
             <div className="app-nav__dropdown" ref={usageMenuRef}>
               <button
@@ -286,6 +297,9 @@ function App() {
       </nav>
       {isMobile && !needsDayAndNightSetup && (
         <div className="app-nav__mobile-tabs">
+          <button type="button" className={page === 'live' ? 'active' : ''} onClick={selectLive}>
+            Live
+          </button>
           {USAGE_PAGES.map(({ page: usagePage, label }) => (
             <button
               key={usagePage}
@@ -302,6 +316,7 @@ function App() {
       {page === 'usage-week' && <UsageByWeek />}
       {page === 'usage-month' && <UsageByMonth />}
       {page === 'usage-year' && <UsageByYear />}
+      {page === 'live' && <Live />}
       {page === 'manage-data' && user?.role === 'ADMIN' && (
         <ManageData onTariffStatusChange={applyDayAndNightStatuses} />
       )}
