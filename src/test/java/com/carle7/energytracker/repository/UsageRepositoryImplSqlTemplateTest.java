@@ -21,6 +21,8 @@ class UsageRepositoryImplSqlTemplateTest {
             assertThat(sql).contains("ORDER BY " + granularity.sqlExpression());
             assertThat(sql).contains("JOIN utc_to_local z ON u.interval_from = z.local_time");
             assertThat(sql).contains("JOIN unit_rate_by_half_hour r ON r.valid_from = z.utc_time AND r.agreement_id = a.id");
+            assertThat(sql).contains("LEFT JOIN happy_hour hh ON z.local_time >= hh.valid_from AND z.local_time < hh.valid_to");
+            assertThat(sql).contains("COALESCE(hh.rate * 100, r.value_inc_vat)");
             assertThat(sql).contains("AND z.local_time >= :fromDate");
             assertThat(sql).contains("AND z.local_time < :toDate");
             assertThat(sql).contains("AND r.payment_method IN (:paymentMethods)");
@@ -38,6 +40,9 @@ class UsageRepositoryImplSqlTemplateTest {
             assertThat(sql).contains("JOIN unit_rate_by_half_hour r ON r.agreement_id = a.id");
             assertThat(sql).contains("JOIN utc_to_local z ON r.valid_from = z.utc_time");
             assertThat(sql).contains("LEFT JOIN usage u ON u.mpan = mp.mpan AND u.interval_from = z.local_time");
+            assertThat(sql).contains("LEFT JOIN happy_hour hh ON z.local_time >= hh.valid_from AND z.local_time < hh.valid_to");
+            assertThat(sql).contains("CASE WHEN hh.id IS NOT NULL THEN 'HAPPY_HOUR' ELSE r.rate_type END AS rateType");
+            assertThat(sql).contains("COALESCE(hh.rate * 100, r.value_inc_vat) AS rate");
             assertThat(sql).contains("AND z.local_time >= :intervalFrom");
             assertThat(sql).contains("AND z.local_time < :intervalTo");
             assertThat(sql).doesNotContain("payment_method");

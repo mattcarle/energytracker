@@ -4,23 +4,16 @@ import UsagePeriodView, { type PeriodColumn } from './UsagePeriodView'
 import {
   addDays,
   formatFullDate,
+  halfHourKeys,
   pad2,
+  useHappyHourDayOverlay,
+  useHappyHourSavings,
   useMeterPoints,
   useSolarDayOverlay,
   useUsagePeriodData,
   type RawPeriodItem,
   type UsagePeriodConfig,
 } from './usageShared'
-
-function halfHourKeys(): string[] {
-  const keys: string[] = []
-  for (let h = 0; h < 24; h++) {
-    for (const m of [0, 30]) {
-      keys.push(`${pad2(h)}:${pad2(m)}`)
-    }
-  }
-  return keys
-}
 
 const EXPECTED_KEYS = halfHourKeys()
 
@@ -102,6 +95,8 @@ export default function UsageByDay() {
 
   const { rows, offPeakAvailableByMpan, latestPeriodKeyByMpan, stdChgDaysByMpan, error } = useUsagePeriodData(meterPoints, config)
   const solar = useSolarDayOverlay(date)
+  const happyHours = useHappyHourDayOverlay(date)
+  const happyHourSavings = useHappyHourSavings(meterPoints, date, happyHours.keys.size > 0)
 
   useEffect(() => {
     if (dateChangedByUser) {
@@ -183,6 +178,8 @@ export default function UsageByDay() {
       batteryAvailable={solar.available}
       loadByKey={solar.loadByKey}
       loadAvailable={solar.available}
+      happyHourKeys={happyHours.keys}
+      happyHourSavings={happyHourSavings}
     />
   )
 }

@@ -29,6 +29,12 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
     // same shape as before, just assembled once per family instead of once per grain.
     // Package-private (not private) so UsageRepositoryImplSqlTemplateTest can assert the
     // formatted SQL text directly.
+    // hh (HAPPY_HOUR) is LEFT JOINed against z.local_time, the same local-time column already
+    // used for every other boundary check here - COALESCE(hh.rate * 100, r.value_inc_vat) prefers
+    // the happy-hour rate (stored in £, so *100 puts it on the same pence scale as
+    // value_inc_vat) whenever the half-hour falls in one, falling back to the ordinary unit rate
+    // otherwise. HappyHourController rejects overlapping rows at write time, so this join can
+    // never match more than one hh row per half-hour.
     static final String AGGREGATE_TEMPLATE = """
             SELECT mp.mpan AS mpan,
                    mp.meter_type AS meterType,
@@ -37,13 +43,14 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
                    COUNT(*) AS intervalCount,
                    SUM(CASE WHEN u.missing THEN 1 ELSE 0 END) AS missingIntervalCount,
                    SUM(u.consumption) AS kwh,
-                   SUM(u.consumption * r.value_inc_vat / 100) AS cost,
-                   SUM(u.consumption * r.value_inc_vat / 100) / NULLIF(SUM(u.consumption), 0) AS avgRate
+                   SUM(u.consumption * COALESCE(hh.rate * 100, r.value_inc_vat) / 100) AS cost,
+                   SUM(u.consumption * COALESCE(hh.rate * 100, r.value_inc_vat) / 100) / NULLIF(SUM(u.consumption), 0) AS avgRate
             FROM meter_point mp
                      JOIN agreement a ON mp.id = a.meter_point_id
                      JOIN usage u ON mp.mpan = u.mpan
                      JOIN utc_to_local z ON u.interval_from = z.local_time
                      JOIN unit_rate_by_half_hour r ON r.valid_from = z.utc_time AND r.agreement_id = a.id
+                     LEFT JOIN happy_hour hh ON z.local_time >= hh.valid_from AND z.local_time < hh.valid_to
             WHERE mp.mpan = :mpan
               AND z.local_time >= :fromDate
               AND z.local_time < :toDate
@@ -55,29 +62,78 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
     // Driven from unit_rate_by_half_hour (via utc_to_local) rather than usage, with usage
     // LEFT JOINed in - so a half-hour with a rate but no recorded consumption (e.g. today's
     // not-yet-synced intervals) still produces a row, with kwh coalesced to 0 instead of being
-    // dropped entirely as an INNER JOIN through usage would do.
+    // dropped entirely as an INNER JOIN through usage would do. A happy-hour half-hour is
+    // reported as its own synthetic 'HAPPY_HOUR' rate type (rather than keeping the underlying
+    // tariff's own STANDARD/DAY/NIGHT type) so it renders as a distinct breakdown segment even
+    // when its discounted rate happens to land close to the ordinary rate.
     static final String BREAKDOWN_TEMPLATE = """
             SELECT mp.mpan AS mpan,
                    %1$s AS period,
-                   r.rate_type AS rateType,
-                   r.value_inc_vat AS rate,
+                   CASE WHEN hh.id IS NOT NULL THEN 'HAPPY_HOUR' ELSE r.rate_type END AS rateType,
+                   COALESCE(hh.rate * 100, r.value_inc_vat) AS rate,
                    COALESCE(SUM(u.consumption), 0) AS kwh
             FROM meter_point mp
                      JOIN agreement a ON mp.id = a.meter_point_id
                      JOIN unit_rate_by_half_hour r ON r.agreement_id = a.id
                      JOIN utc_to_local z ON r.valid_from = z.utc_time
                      LEFT JOIN usage u ON u.mpan = mp.mpan AND u.interval_from = z.local_time
+                     LEFT JOIN happy_hour hh ON z.local_time >= hh.valid_from AND z.local_time < hh.valid_to
             WHERE mp.mpan = :mpan
               AND z.local_time >= :intervalFrom
               AND z.local_time < :intervalTo
-            GROUP BY mp.mpan, %1$s, r.rate_type, r.value_inc_vat
+            GROUP BY mp.mpan, %1$s, r.rate_type, r.value_inc_vat, hh.id, hh.rate
             ORDER BY %1$s
+            """;
+
+    // INNER (not LEFT) JOINed to happy_hour, unlike the two templates above - only half-hours
+    // that actually fell in a happy hour window contribute here. moneySaved is the ordinary
+    // unit rate minus the happy-hour rate (both put on the same pence scale, see
+    // AGGREGATE_TEMPLATE's comment) times consumption, i.e. what that usage would have cost
+    // without the discount, minus what it actually cost.
+    static final String HAPPY_HOUR_SAVINGS_TEMPLATE = """
+            SELECT COALESCE(SUM(u.consumption), 0) AS kwh,
+                   COALESCE(SUM(u.consumption * (r.value_inc_vat - hh.rate * 100) / 100), 0) AS moneySaved
+            FROM meter_point mp
+                     JOIN agreement a ON mp.id = a.meter_point_id
+                     JOIN usage u ON mp.mpan = u.mpan
+                     JOIN utc_to_local z ON u.interval_from = z.local_time
+                     JOIN unit_rate_by_half_hour r ON r.valid_from = z.utc_time AND r.agreement_id = a.id
+                     JOIN happy_hour hh ON z.local_time >= hh.valid_from AND z.local_time < hh.valid_to
+            WHERE mp.mpan = :mpan
+              AND z.local_time >= :fromDate
+              AND z.local_time < :toDate
+              AND r.payment_method IN (:paymentMethods)
             """;
 
     private final EntityManager entityManager;
 
     public UsageRepositoryImpl(EntityManager entityManager) {
         this.entityManager = entityManager;
+    }
+
+    @Override
+    public HappyHourSavingsProjection findHappyHourSavings(String mpan, LocalDate fromDate, LocalDate toDate, List<String> paymentMethods) {
+        Query query = entityManager.createNativeQuery(HAPPY_HOUR_SAVINGS_TEMPLATE, Tuple.class);
+        query.setParameter("mpan", mpan);
+        query.setParameter("fromDate", fromDate);
+        query.setParameter("toDate", toDate);
+        query.unwrap(NativeQuery.class).setParameterList("paymentMethods", paymentMethods);
+        // A scalar aggregate query (no GROUP BY) always returns exactly one row, even when no
+        // usage fell in a happy hour - the COALESCEs above turn its NULL sums into zero.
+        Tuple row = toTupleList(query).get(0);
+        return new HappyHourSavingsRow(row.get("kwh", BigDecimal.class), row.get("moneySaved", BigDecimal.class));
+    }
+
+    private record HappyHourSavingsRow(BigDecimal kwh, BigDecimal moneySaved) implements HappyHourSavingsProjection {
+        @Override
+        public BigDecimal getKwh() {
+            return kwh;
+        }
+
+        @Override
+        public BigDecimal getMoneySaved() {
+            return moneySaved;
+        }
     }
 
     @Override

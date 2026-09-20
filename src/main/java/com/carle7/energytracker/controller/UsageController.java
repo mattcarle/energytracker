@@ -1,5 +1,6 @@
 package com.carle7.energytracker.controller;
 
+import com.carle7.energytracker.repository.HappyHourSavingsProjection;
 import com.carle7.energytracker.repository.RateBreakdown;
 import com.carle7.energytracker.repository.UsageAggregateProjection;
 import com.carle7.energytracker.repository.UsageByDayGroupByRateAndRateTypeProjection;
@@ -40,6 +41,21 @@ public class UsageController {
     @GetMapping("/api/usage/date-range")
     public List<UsageDateRangeProjection> getUsageDateRange() {
         return usageRepository.findDateRangeByMpan();
+    }
+
+    @GetMapping("/api/usage/happy-hour-savings")
+    public HappyHourSavingsResponse getHappyHourSavings(
+            @RequestParam String mpan,
+            @RequestParam(required = false) LocalDate fromDate,
+            @RequestParam(required = false) LocalDate toDate,
+            @RequestParam(required = false) List<String> paymentMethods) {
+
+        LocalDate effectiveFromDate = effectiveFromDate(fromDate);
+        LocalDate effectiveToDate = effectiveToDate(toDate);
+        List<String> effectivePaymentMethods = effectivePaymentMethods(paymentMethods);
+
+        HappyHourSavingsProjection result = usageRepository.findHappyHourSavings(mpan, effectiveFromDate, effectiveToDate, effectivePaymentMethods);
+        return new HappyHourSavingsResponse(result.getKwh(), result.getMoneySaved());
     }
 
     @GetMapping("/api/usage/by-half-hour")
@@ -231,6 +247,24 @@ public class UsageController {
                 ? cost.divide(kwh, 6, RoundingMode.HALF_UP)
                 : null;
         return new UsageTotals(intervalCount, missingIntervalCount, kwh, cost, avgRate);
+    }
+
+    public static class HappyHourSavingsResponse {
+        private final BigDecimal kwh;
+        private final BigDecimal moneySaved;
+
+        public HappyHourSavingsResponse(BigDecimal kwh, BigDecimal moneySaved) {
+            this.kwh = kwh;
+            this.moneySaved = moneySaved;
+        }
+
+        public BigDecimal getKwh() {
+            return kwh;
+        }
+
+        public BigDecimal getMoneySaved() {
+            return moneySaved;
+        }
     }
 
     public static class UsageByHalfHourResponse {

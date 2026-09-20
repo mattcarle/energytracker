@@ -156,6 +156,71 @@
   color: var(--text-h);
 }
 
+.happy-hour-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+.happy-hour-table th,
+.happy-hour-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.happy-hour-table th {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.happy-hour-table td {
+  color: var(--text-h);
+}
+
+.happy-hour-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.happy-hour-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.happy-hour-form__field input {
+  font: inherit;
+  font-size: 15px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+}
+
+.happy-hour-form button {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 9px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.happy-hour-form button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .manage-data__actions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

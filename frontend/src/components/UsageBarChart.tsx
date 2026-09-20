@@ -5,6 +5,7 @@ import {
   Cell,
   ComposedChart,
   Line,
+  ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -100,6 +101,11 @@ interface UsageBarChartProps {
   solar?: SolarOverlayProps
   battery?: BatteryOverlayProps
   load?: LoadOverlayProps
+  // Period keys (PeriodRow.key) that fall within a configured happy-hour window - Day page
+  // only, since happy hours are entered as specific date/times rather than a recurring
+  // time-of-day. Rendered as a shaded background band rather than per-bar coloring (unlike
+  // peak/off-peak) since a happy hour is a schedule overlay, not a property of the usage itself.
+  happyHourKeys?: Set<string>
 }
 
 function usageKey(mpan: string): string {
@@ -204,7 +210,7 @@ function formatLoadValue(value: number): string {
   return `${value.toFixed(2)} kW`
 }
 
-export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvailableByMpan, solar, battery, load }: UsageBarChartProps) {
+export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvailableByMpan, solar, battery, load, happyHourKeys }: UsageBarChartProps) {
   const isMobile = useIsMobile()
   const solarSeriesName = solar?.unit === 'kW' ? SOLAR_SERIES_NAME_KW : SOLAR_SERIES_NAME_KWH
   const data = rows.map((row) => {
@@ -376,6 +382,26 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
 
   const hasAnyMissing = data.some((point) => meterPoints.some((mp) => point[missingKey(mp.mpan)]))
 
+  // Collapses consecutive happy-hour periods into contiguous [x1, x2] bands (by chartLabel, the
+  // same category values the x-axis itself plots) rather than one ReferenceArea per period, so
+  // an hour-long happy hour renders as a single band instead of two abutting ones.
+  const happyHourRanges: { x1: string; x2: string }[] = []
+  if (happyHourKeys && happyHourKeys.size > 0) {
+    let start: string | null = null
+    let end: string | null = null
+    for (const row of rows) {
+      if (happyHourKeys.has(row.key)) {
+        if (start === null) start = row.chartLabel
+        end = row.chartLabel
+      } else if (start !== null) {
+        happyHourRanges.push({ x1: start, x2: end! })
+        start = null
+        end = null
+      }
+    }
+    if (start !== null) happyHourRanges.push({ x1: start, x2: end! })
+  }
+
   return (
     <div className="usage-bar-chart">
       <ResponsiveContainer width="100%" height={360}>
@@ -385,6 +411,18 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
             {missingHatchPatterns(MPAN_OFFPEAK_COLORS, 'offpeak')}
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+          {happyHourRanges.map((range, index) => (
+            <ReferenceArea
+              key={index}
+              x1={range.x1}
+              x2={range.x2}
+              fill="var(--chart-happy-hour)"
+              fillOpacity={0.18}
+              stroke="var(--chart-happy-hour)"
+              strokeOpacity={0.5}
+              ifOverflow="extendDomain"
+            />
+          ))}
           <XAxis
             dataKey="dayLabel"
             tick={{ fill: 'var(--text)', fontSize: 11 }}
@@ -579,6 +617,15 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
           <span className="usage-bar-chart__legend-entry">
             <span className="usage-bar-chart__legend-swatch usage-bar-chart__legend-swatch--missing" />
             Missing data
+          </span>
+        )}
+        {happyHourRanges.length > 0 && (
+          <span className="usage-bar-chart__legend-entry">
+            <span
+              className="usage-bar-chart__legend-swatch"
+              style={{ background: 'var(--chart-happy-hour)', opacity: 0.5 }}
+            />
+            Happy Hour
           </span>
         )}
       </div>

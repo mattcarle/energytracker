@@ -2,9 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   checkDataIntegrity,
   createDayAndNightTariff,
+  createHappyHour,
   deleteDayAndNightTariff,
+  deleteHappyHour,
   getAgreements,
   getDayAndNightTariffStatus,
+  getHappyHours,
   getMeterPoints,
   getMeters,
   getUsageDateRanges,
@@ -17,6 +20,7 @@ import type {
   Agreement,
   DataIntegrityReport,
   DayAndNightTariffStatus,
+  HappyHour,
   Meter,
   MeterPoint,
   UsageDateRange,
@@ -71,6 +75,24 @@ function formatDate(value: string | null): string {
   return new Date(value).toLocaleDateString()
 }
 
+function formatDateTime(value: string): string {
+  return new Date(value).toLocaleString(undefined, {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+interface NewHappyHour {
+  validFrom: string
+  validTo: string
+  rate: string
+}
+
+const EMPTY_HAPPY_HOUR: NewHappyHour = { validFrom: '', validTo: '', rate: '' }
+
 interface ManageDataProps {
   // Notified with the latest tariff statuses every time this page fetches them, so App can keep
   // its "is Day/Night setup still incomplete" gate in sync without a second fetch of its own.
@@ -100,10 +122,23 @@ export default function ManageData({ onTariffStatusChange }: ManageDataProps) {
   const [deleteTariffTarget, setDeleteTariffTarget] = useState<DayAndNightTariffStatus | null>(null)
   const [deletingTariff, setDeletingTariff] = useState(false)
 
+  const [happyHours, setHappyHours] = useState<HappyHour[] | null>(null)
+  const [newHappyHour, setNewHappyHour] = useState<NewHappyHour>(EMPTY_HAPPY_HOUR)
+  const [addingHappyHour, setAddingHappyHour] = useState(false)
+  const [deletingHappyHourId, setDeletingHappyHourId] = useState<number | null>(null)
+  const [happyHourActionError, setHappyHourActionError] = useState<string | null>(null)
+
   const refresh = useCallback(() => {
     setError(null)
-    Promise.all([getMeterPoints(), getMeters(), getAgreements(), getUsageDateRanges(), getDayAndNightTariffStatus()])
-      .then(([meterPoints, meters, agreements, ranges, tariffStatuses]) => {
+    Promise.all([
+      getMeterPoints(),
+      getMeters(),
+      getAgreements(),
+      getUsageDateRanges(),
+      getDayAndNightTariffStatus(),
+      getHappyHours(),
+    ])
+      .then(([meterPoints, meters, agreements, ranges, tariffStatuses, happyHourEntries]) => {
         const combined = meterPoints.map((meterPoint) => ({
           meterPoint,
           meters: meters.filter((meter) => meter.meterPointId === meterPoint.id),
@@ -115,6 +150,7 @@ export default function ManageData({ onTariffStatusChange }: ManageDataProps) {
         setDateRanges(new Map(ranges.map((r) => [r.mpan, r])))
         setDayAndNightTariffs(tariffStatuses)
         onTariffStatusChange?.(tariffStatuses)
+        setHappyHours(happyHourEntries)
       })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : 'Failed to load account details')
@@ -212,6 +248,30 @@ export default function ManageData({ onTariffStatusChange }: ManageDataProps) {
       })
       .catch((err: unknown) => setTariffActionError(err instanceof Error ? err.message : 'Failed to delete tariff'))
       .finally(() => setDeletingTariff(false))
+  }
+
+  const canAddHappyHour = newHappyHour.validFrom !== '' && newHappyHour.validTo !== '' && newHappyHour.rate !== ''
+
+  function handleAddHappyHour() {
+    if (!canAddHappyHour) return
+    setHappyHourActionError(null)
+    setAddingHappyHour(true)
+    createHappyHour(newHappyHour.validFrom, newHappyHour.validTo, Number(newHappyHour.rate))
+      .then(() => {
+        setNewHappyHour(EMPTY_HAPPY_HOUR)
+        refresh()
+      })
+      .catch((err: unknown) => setHappyHourActionError(err instanceof Error ? err.message : 'Failed to add happy hour'))
+      .finally(() => setAddingHappyHour(false))
+  }
+
+  function handleDeleteHappyHour(id: number) {
+    setHappyHourActionError(null)
+    setDeletingHappyHourId(id)
+    deleteHappyHour(id)
+      .then(() => refresh())
+      .catch((err: unknown) => setHappyHourActionError(err instanceof Error ? err.message : 'Failed to delete happy hour'))
+      .finally(() => setDeletingHappyHourId(null))
   }
 
   return (
@@ -370,6 +430,85 @@ export default function ManageData({ onTariffStatusChange }: ManageDataProps) {
             </tbody>
           </table>
         )}
+      </section>
+
+      <section className="manage-data__section">
+        <h2>Happy Hours</h2>
+        <p className="manage-data__section-intro">
+          Record periods when electricity is free or discounted (e.g. an Octopus Saving Session or
+          Power-Up) - usage during these windows is costed at the rate given here instead of the
+          normal tariff rate.
+        </p>
+
+        {happyHourActionError && <p className="manage-data__error">{happyHourActionError}</p>}
+
+        {!error && !happyHours && <p>Loading happy hours…</p>}
+        {happyHours && happyHours.length === 0 && <p>No happy hours configured.</p>}
+
+        {happyHours && happyHours.length > 0 && (
+          <table className="happy-hour-table">
+            <thead>
+              <tr>
+                <th>From</th>
+                <th>To</th>
+                <th>Rate (£/kWh)</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {happyHours.map((happyHour) => (
+                <tr key={happyHour.id}>
+                  <td>{formatDateTime(happyHour.validFrom)}</td>
+                  <td>{formatDateTime(happyHour.validTo)}</td>
+                  <td>£{happyHour.rate.toFixed(4)}</td>
+                  <td className="day-night-table__actions">
+                    <button
+                      type="button"
+                      className="day-night-table__delete"
+                      onClick={() => handleDeleteHappyHour(happyHour.id)}
+                      disabled={deletingHappyHourId === happyHour.id}
+                    >
+                      {deletingHappyHourId === happyHour.id ? 'Deleting…' : 'Delete'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        <div className="happy-hour-form">
+          <label className="happy-hour-form__field">
+            From
+            <input
+              type="datetime-local"
+              value={newHappyHour.validFrom}
+              onChange={(e) => setNewHappyHour({ ...newHappyHour, validFrom: e.target.value })}
+            />
+          </label>
+          <label className="happy-hour-form__field">
+            To
+            <input
+              type="datetime-local"
+              value={newHappyHour.validTo}
+              onChange={(e) => setNewHappyHour({ ...newHappyHour, validTo: e.target.value })}
+            />
+          </label>
+          <label className="happy-hour-form__field">
+            Rate (£/kWh)
+            <input
+              type="number"
+              step="0.0001"
+              min="0"
+              placeholder="0.0000"
+              value={newHappyHour.rate}
+              onChange={(e) => setNewHappyHour({ ...newHappyHour, rate: e.target.value })}
+            />
+          </label>
+          <button type="button" onClick={handleAddHappyHour} disabled={!canAddHappyHour || addingHappyHour}>
+            {addingHappyHour ? 'Adding…' : 'Add'}
+          </button>
+        </div>
       </section>
 
       {confirmTarget && (

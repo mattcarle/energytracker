@@ -56,6 +56,14 @@ interface UsagePeriodViewProps {
   // battery's checkbox above.
   loadByKey?: Map<string, number> | null
   loadAvailable?: boolean
+  // Period keys that fall within a configured happy-hour window - Day page only (see
+  // UsageBarChart.happyHourKeys for why). Undefined/empty on every other page, which just
+  // renders no highlight.
+  happyHourKeys?: Set<string>
+  // kWh used and £ saved during those happy-hour periods (already summed across every
+  // electricity import MPAN - see useHappyHourSavings) - Day page only. Drives its own Insights
+  // card, shown only when there's something to report.
+  happyHourSavings?: { kwh: number; moneySaved: number } | null
   // Opt-in, so a future usage-by-X page can still fall back to chart/table-only behaviour.
   enableInsights?: boolean
   // Singular period noun for the Insights section's "Average per X" cards - "Day" for Usage by
@@ -177,6 +185,8 @@ export default function UsagePeriodView({
   batteryAvailable = false,
   loadByKey = null,
   loadAvailable = false,
+  happyHourKeys,
+  happyHourSavings = null,
 }: UsagePeriodViewProps) {
   const isMobile = useIsMobile()
   const [selectedMpans, setSelectedMpans] = useState<Set<string> | null>(null)
@@ -576,6 +586,7 @@ export default function UsagePeriodView({
               load={
                 loadActive && loadByKey ? { byKey: loadByKey, useSecondaryAxis: chartView === 'cost' } : undefined
               }
+              happyHourKeys={happyHourKeys}
             />
           )}
         </div>
@@ -713,6 +724,16 @@ export default function UsagePeriodView({
             </div>
           )}
 
+          {happyHourSavings && (happyHourSavings.kwh !== 0 || happyHourSavings.moneySaved !== 0) && (
+            <div className="usage-page__insights-category">
+              <h3 className="usage-page__insights-subheading">Happy Hour</h3>
+              <div className="usage-page__stat-grid">
+                <StatTile label="Usage" value={formatKwhOnlyLine(happyHourSavings.kwh)} />
+                <StatTile label="Money Saved" value={formatPoundValue(happyHourSavings.moneySaved)} />
+              </div>
+            </div>
+          )}
+
           {(insightsData.importMpans.length > 0 ||
             insightsData.exportMpans.length > 0 ||
             insightsData.gasMpans.length > 0) && (
@@ -738,7 +759,8 @@ export default function UsagePeriodView({
           {insightsData.importMpans.length === 0 &&
             insightsData.exportMpans.length === 0 &&
             insightsData.gasMpans.length === 0 &&
-            !(solarActive && solarTotalKwh !== null) && (
+            !(solarActive && solarTotalKwh !== null) &&
+            !(happyHourSavings && (happyHourSavings.kwh !== 0 || happyHourSavings.moneySaved !== 0)) && (
               <p className="usage-page__insights-empty">Select an MPAN above to see insights.</p>
             )}
         </div>

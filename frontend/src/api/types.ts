@@ -266,3 +266,19 @@ export interface DayAndNightTariffStatus {
   dayRateValidFrom: string | null
   nightRateValidFrom: string | null
 }
+
+export interface HappyHour {
+  id: number
+  // LocalDateTime strings ("YYYY-MM-DDTHH:mm[:ss]"), local wall-clock time - the same local time
+  // usage intervals themselves are keyed by, not UTC.
+  validFrom: string
+  validTo: string
+  // £ per kWh.
+  rate: number
+}
+
+export interface HappyHourSavings {
+  kwh: number
+  // What that usage would have cost at the ordinary unit rate, minus what it actually cost.
+  moneySaved: number
+}

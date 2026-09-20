@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getMeterPoints, getSolarByDay, getSolarByMonth, getSolarDateRanges, getSolarHourly, getStandingChargesByDay } from '../api/client'
+import { getHappyHourSavings, getHappyHours, getMeterPoints, getSolarByDay, getSolarByMonth, getSolarDateRanges, getSolarHourly, getStandingChargesByDay } from '../api/client'
 import type { MeterPoint, SolarPowerPoint } from '../api/types'
 
 export interface MpanFigures {
@@ -140,6 +140,18 @@ export function isKwhView(view: ChartView): boolean {
 
 export function pad2(value: number): string {
   return value.toString().padStart(2, '0')
+}
+
+// "HH:mm" for every half-hourly interval in a day - shared by the Day page's own period keys
+// and the happy-hour overlay below, which both need to enumerate the same 48 slots.
+export function halfHourKeys(): string[] {
+  const keys: string[] = []
+  for (let h = 0; h < 24; h++) {
+    for (const m of [0, 30]) {
+      keys.push(`${pad2(h)}:${pad2(m)}`)
+    }
+  }
+  return keys
 }
 
 export const MONTH_NAMES = [
@@ -536,6 +548,105 @@ function bucketBatteryCurveToHalfHours(points: SolarPowerPoint[]): Map<string, n
 
 function bucketLoadCurveToHalfHours(points: SolarPowerPoint[]): Map<string, number> {
   return bucketToHalfHours(points, (p) => p.loadWatts, WATTS_PER_KW)
+}
+
+export interface HappyHourOverlayData {
+  keys: Set<string>
+  error: string | null
+}
+
+const EMPTY_HAPPY_HOURS: HappyHourOverlayData = { keys: new Set(), error: null }
+
+// Day page only - maps each of the day's 48 half-hour keys to whether its start instant falls
+// within a configured happy-hour window, using the same boundary semantics the backend applies
+// when it rates usage (z.local_time >= valid_from AND z.local_time < valid_to - see
+// UsageRepositoryImpl), so the highlighted band always agrees with which periods were actually
+// billed at the happy-hour rate. validFrom/validTo are naive local-time strings (like every
+// other LocalDateTime this app sends over the wire), so `new Date(...)` parses them in the
+// viewer's own time zone - the same assumption ManageData's formatDate already relies on.
+export function useHappyHourDayOverlay(date: string): HappyHourOverlayData {
+  const [data, setData] = useState<HappyHourOverlayData>(EMPTY_HAPPY_HOURS)
+
+  useEffect(() => {
+    let cancelled = false
+    getHappyHours()
+      .then((happyHours) => {
+        if (cancelled) return
+        if (happyHours.length === 0) {
+          setData(EMPTY_HAPPY_HOURS)
+          return
+        }
+        const windows = happyHours.map((hh) => ({
+          from: new Date(hh.validFrom).getTime(),
+          to: new Date(hh.validTo).getTime(),
+        }))
+        const keys = new Set<string>()
+        for (const key of halfHourKeys()) {
+          const slotStart = new Date(`${date}T${key}:00`).getTime()
+          if (windows.some((w) => slotStart >= w.from && slotStart < w.to)) {
+            keys.add(key)
+          }
+        }
+        setData({ keys, error: null })
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setData((d) => ({ ...d, error: err instanceof Error ? err.message : 'Failed to load happy hours' }))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [date])
+
+  return data
+}
+
+export interface HappyHourSavingsData {
+  kwh: number
+  moneySaved: number
+  error: string | null
+}
+
+const EMPTY_HAPPY_HOUR_SAVINGS: HappyHourSavingsData = { kwh: 0, moneySaved: 0, error: null }
+
+// Day page only, and only fetched when `enabled` (the day actually overlaps a happy hour - see
+// useHappyHourDayOverlay, whose `keys` the caller checks before enabling this) - summed across
+// every electricity import meter point, independent of the MPAN checkbox filter, the same way
+// solar/battery/load are: "how much did I save today" is a whole-account figure, not a
+// per-selection one.
+export function useHappyHourSavings(meterPoints: MeterPoint[] | null, date: string, enabled: boolean): HappyHourSavingsData {
+  const [data, setData] = useState<HappyHourSavingsData>(EMPTY_HAPPY_HOUR_SAVINGS)
+
+  useEffect(() => {
+    if (!enabled || !meterPoints) {
+      setData(EMPTY_HAPPY_HOUR_SAVINGS)
+      return
+    }
+    const importMpans = meterPoints.filter((mp) => mp.meterType !== 'GAS' && !mp.isExport)
+    if (importMpans.length === 0) {
+      setData(EMPTY_HAPPY_HOUR_SAVINGS)
+      return
+    }
+    let cancelled = false
+    Promise.all(importMpans.map((mp) => getHappyHourSavings(mp.mpan, date, addDays(date, 1))))
+      .then((results) => {
+        if (cancelled) return
+        setData({
+          kwh: results.reduce((sum, r) => sum + r.kwh, 0),
+          moneySaved: results.reduce((sum, r) => sum + r.moneySaved, 0),
+          error: null,
+        })
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setData((d) => ({ ...d, error: err instanceof Error ? err.message : 'Failed to load happy hour savings' }))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [meterPoints, date, enabled])
+
+  return data
 }
 
 // Day page's solar overlay: the intraday power curve (kW, bucketed to half hours) for the

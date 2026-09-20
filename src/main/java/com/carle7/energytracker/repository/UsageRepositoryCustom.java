@@ -28,4 +28,6 @@ interface UsageRepositoryCustom {
     List<UsageByMonthGroupByRateAndRateTypeProjection> findUsageByMonthGroupByRateAndRateType(String mpan, LocalDateTime intervalFrom, LocalDateTime intervalTo);
 
     List<UsageByYearGroupByRateAndRateTypeProjection> findUsageByYearGroupByRateAndRateType(String mpan, LocalDateTime intervalFrom, LocalDateTime intervalTo);
+
+    HappyHourSavingsProjection findHappyHourSavings(String mpan, LocalDate fromDate, LocalDate toDate, List<String> paymentMethods);
 }

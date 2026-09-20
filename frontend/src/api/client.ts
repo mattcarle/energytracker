@@ -5,6 +5,8 @@ import type {
   DataIntegrityReport,
   DayAndNightTariffStatus,
   GrowattCredentialsStatus,
+  HappyHour,
+  HappyHourSavings,
   Meter,
   MeterPoint,
   PlantLoadResult,
@@ -108,6 +110,11 @@ export function getUsageDateRanges(): Promise<UsageDateRange[]> {
   return getJson('/api/usage/date-range')
 }
 
+export function getHappyHourSavings(mpan: string, fromDate: string, toDate: string): Promise<HappyHourSavings> {
+  const params = new URLSearchParams({ mpan, fromDate, toDate })
+  return getJson(`/api/usage/happy-hour-savings?${params.toString()}`)
+}
+
 export function loadAccountData(deleteAll: boolean): Promise<AccountLoadResult> {
   return request(`/api/load/account?deleteAll=${deleteAll}`, { method: 'POST' })
 }
@@ -149,6 +156,21 @@ export function updateDayAndNightTariff(
 
 export function deleteDayAndNightTariff(id: number): Promise<void> {
   return request(`/api/day-and-night-tariffs/${id}`, { method: 'DELETE' })
+}
+
+export function getHappyHours(): Promise<HappyHour[]> {
+  return getJson('/api/happy-hours')
+}
+
+export function createHappyHour(validFrom: string, validTo: string, rate: number): Promise<HappyHour> {
+  return request('/api/happy-hours', {
+    method: 'POST',
+    body: JSON.stringify({ validFrom, validTo, rate }),
+  })
+}
+
+export function deleteHappyHour(id: number): Promise<void> {
+  return request(`/api/happy-hours/${id}`, { method: 'DELETE' })
 }
 
 export function getStandingChargesByDay(

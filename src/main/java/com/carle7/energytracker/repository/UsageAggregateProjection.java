@@ -70,10 +70,14 @@ public interface UsageAggregateProjection {
             return null;
         }
 
-        // DAY rates always peak, NIGHT rates always off-peak, otherwise treat any rate that is less than half the maximum rate as off-peak
+        // DAY and HAPPY_HOUR rates always peak (a happy hour is a scheduled event to highlight,
+        // not an off-peak tariff period, even though its rate is usually the cheapest of the
+        // day), NIGHT rates always off-peak, otherwise treat any rate that is less than half the
+        // maximum rate as off-peak
         return breakdown.stream()
                 .filter(row ->
                         !"DAY".equals(row.getRateType()) &&
+                        !"HAPPY_HOUR".equals(row.getRateType()) &&
                         ("NIGHT".equals(row.getRateType()) || row.getRate().multiply(TWO).compareTo(maxRate) < 0))
                 .collect(Collectors.toList());
     }

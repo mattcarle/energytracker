@@ -164,7 +164,22 @@ CREATE TABLE IF NOT EXISTS SOLAR_GENERATION (
     UNIQUE (plant_id, generation_date)
 );
 
+-- Periods of free/discounted electricity, entered manually via the Manage Octopus Data page.
+-- rate is stored in £ (not pence, unlike UNIT_RATE/STANDING_CHARGE) - matches how it's entered
+-- in the UI; converted to pence at query time (see UsageRepositoryImpl) to combine with the
+-- existing pence-based unit rate. Non-overlap between rows is enforced at the application layer
+-- (HappyHourController), not here, so a half-hour's rate is never ambiguous between two rows.
+CREATE TABLE IF NOT EXISTS HAPPY_HOUR (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    valid_from TIMESTAMP NOT NULL,
+    valid_to TIMESTAMP NOT NULL,
+    rate DECIMAL(10, 4) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CHECK (valid_to > valid_from)
+);
+
 CREATE INDEX IF NOT EXISTS idx_agreement_tariff_code ON AGREEMENT(tariff_code);
+CREATE INDEX IF NOT EXISTS idx_happy_hour_valid_from ON HAPPY_HOUR(valid_from);
 CREATE INDEX IF NOT EXISTS idx_solar_generation_date ON SOLAR_GENERATION(generation_date);
 CREATE INDEX IF NOT EXISTS idx_day_and_night_tariff_tariff_code ON DAY_AND_NIGHT_TARIFF(tariff_code);
 CREATE INDEX IF NOT EXISTS idx_unit_rate_by_half_hour_valid_from ON UNIT_RATE_BY_HALF_HOUR(valid_from);
