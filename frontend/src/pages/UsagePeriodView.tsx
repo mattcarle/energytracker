@@ -185,8 +185,8 @@ export default function UsagePeriodView({
   const [showInsights, setShowInsights] = useState(true)
   const [chartView, setChartView] = useState<ChartView>('usage')
   const [showSolar, setShowSolar] = useState(true)
-  const [showBattery, setShowBattery] = useState(true)
-  const [showLoad, setShowLoad] = useState(true)
+  const [showBattery, setShowBattery] = useState(false)
+  const [showLoad, setShowLoad] = useState(false)
 
   // The table isn't offered on mobile at all - deriving this rather than forcing showTable
   // itself to false keeps the desktop toggle state intact if the viewport is later resized back

@@ -119,7 +119,11 @@ public class GrowattService {
                 return result;
             }
 
-            LocalDate periodTo = LocalDate.now();
+            // Never fetch "today" - the inverter hasn't finished reporting for it yet, and the
+            // 02:00 scheduled run in particular would otherwise request a same-day range that
+            // Growatt has no data for at all (it's the middle of the night). Today's total gets
+            // picked up once it becomes "yesterday" on the next run.
+            LocalDate periodTo = LocalDate.now().minusDays(1);
             if (periodFrom.isAfter(periodTo)) {
                 result.setDayCount(0);
                 return result;
