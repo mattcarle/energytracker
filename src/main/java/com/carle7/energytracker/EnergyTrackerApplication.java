@@ -2,11 +2,13 @@ package com.carle7.energytracker;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.web.client.RestTemplate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.time.Duration;
 import java.util.TimeZone;
 
 @SpringBootApplication
@@ -24,9 +26,17 @@ public class EnergyTrackerApplication {
 		SpringApplication.run(EnergyTrackerApplication.class, args);
 	}
 
+	// Both Octopus and Growatt API calls share this bean (see OctopusApiService/GrowattApiService).
+	// Without explicit timeouts, a stalled/unresponsive call blocks its caller forever - and since
+	// the daily @Scheduled jobs run on a small fixed thread pool (see
+	// spring.task.scheduling.pool.size), one indefinitely-hung call can permanently starve every
+	// later firing of every scheduled job, not just the one that hung.
 	@Bean
-	public RestTemplate restTemplate() {
-		return new RestTemplate();
+	public RestTemplate restTemplate(RestTemplateBuilder builder) {
+		return builder
+				.connectTimeout(Duration.ofSeconds(10))
+				.readTimeout(Duration.ofSeconds(30))
+				.build();
 	}
 
 	@Bean
