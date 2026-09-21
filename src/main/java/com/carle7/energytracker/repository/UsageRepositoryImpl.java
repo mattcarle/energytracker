@@ -34,7 +34,11 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
     // the happy-hour rate (stored in £, so *100 puts it on the same pence scale as
     // value_inc_vat) whenever the half-hour falls in one, falling back to the ordinary unit rate
     // otherwise. HappyHourController rejects overlapping rows at write time, so this join can
-    // never match more than one hh row per half-hour.
+    // never match more than one hh row per half-hour. Happy hours are an electricity-import
+    // offer, so the join is also restricted to import electricity meter points (mp.meter_type =
+    // 'ELEC' AND NOT mp.is_export) - a happy-hour row has no meter point of its own, and without
+    // this gas and export usage that fell in the window was rated at the happy-hour rate too. The
+    // same restriction is on the two templates below.
     static final String AGGREGATE_TEMPLATE = """
             SELECT mp.mpan AS mpan,
                    mp.meter_type AS meterType,
@@ -51,6 +55,7 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
                      JOIN utc_to_local z ON u.interval_from = z.local_time
                      JOIN unit_rate_by_half_hour r ON r.valid_from = z.utc_time AND r.agreement_id = a.id
                      LEFT JOIN happy_hour hh ON z.local_time >= hh.valid_from AND z.local_time < hh.valid_to
+                          AND mp.meter_type = 'ELEC' AND mp.is_export = FALSE
             WHERE mp.mpan = :mpan
               AND z.local_time >= :fromDate
               AND z.local_time < :toDate
@@ -78,6 +83,7 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
                      JOIN utc_to_local z ON r.valid_from = z.utc_time
                      LEFT JOIN usage u ON u.mpan = mp.mpan AND u.interval_from = z.local_time
                      LEFT JOIN happy_hour hh ON z.local_time >= hh.valid_from AND z.local_time < hh.valid_to
+                          AND mp.meter_type = 'ELEC' AND mp.is_export = FALSE
             WHERE mp.mpan = :mpan
               AND z.local_time >= :intervalFrom
               AND z.local_time < :intervalTo
@@ -99,6 +105,7 @@ public class UsageRepositoryImpl implements UsageRepositoryCustom {
                      JOIN utc_to_local z ON u.interval_from = z.local_time
                      JOIN unit_rate_by_half_hour r ON r.valid_from = z.utc_time AND r.agreement_id = a.id
                      JOIN happy_hour hh ON z.local_time >= hh.valid_from AND z.local_time < hh.valid_to
+                          AND mp.meter_type = 'ELEC' AND mp.is_export = FALSE
             WHERE mp.mpan = :mpan
               AND z.local_time >= :fromDate
               AND z.local_time < :toDate

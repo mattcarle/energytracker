@@ -11,6 +11,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 // an unescaped '%' landmine) fails here rather than only showing up as a live data discrepancy.
 class UsageRepositoryImplSqlTemplateTest {
 
+    // Happy hours are an electricity-import offer - every template that joins them has to carry
+    // this restriction, or gas/export usage inside a window gets the happy-hour rate too.
+    private static final String HAPPY_HOUR_IMPORT_ONLY = "AND mp.meter_type = 'ELEC' AND mp.is_export = FALSE";
+
+    @Test
+    void happyHourSavingsTemplateOnlyJoinsImportElectricity() {
+        String sql = UsageRepositoryImpl.HAPPY_HOUR_SAVINGS_TEMPLATE;
+
+        assertThat(sql).contains("JOIN happy_hour hh ON z.local_time >= hh.valid_from AND z.local_time < hh.valid_to");
+        assertThat(sql).contains(HAPPY_HOUR_IMPORT_ONLY);
+    }
+
     @Test
     void aggregateTemplateFormatsCorrectlyForEveryGranularity() {
         for (Granularity granularity : Granularity.values()) {
@@ -22,6 +34,7 @@ class UsageRepositoryImplSqlTemplateTest {
             assertThat(sql).contains("JOIN utc_to_local z ON u.interval_from = z.local_time");
             assertThat(sql).contains("JOIN unit_rate_by_half_hour r ON r.valid_from = z.utc_time AND r.agreement_id = a.id");
             assertThat(sql).contains("LEFT JOIN happy_hour hh ON z.local_time >= hh.valid_from AND z.local_time < hh.valid_to");
+            assertThat(sql).contains(HAPPY_HOUR_IMPORT_ONLY);
             assertThat(sql).contains("COALESCE(hh.rate * 100, r.value_inc_vat)");
             assertThat(sql).contains("AND z.local_time >= :fromDate");
             assertThat(sql).contains("AND z.local_time < :toDate");
@@ -41,6 +54,7 @@ class UsageRepositoryImplSqlTemplateTest {
             assertThat(sql).contains("JOIN utc_to_local z ON r.valid_from = z.utc_time");
             assertThat(sql).contains("LEFT JOIN usage u ON u.mpan = mp.mpan AND u.interval_from = z.local_time");
             assertThat(sql).contains("LEFT JOIN happy_hour hh ON z.local_time >= hh.valid_from AND z.local_time < hh.valid_to");
+            assertThat(sql).contains(HAPPY_HOUR_IMPORT_ONLY);
             assertThat(sql).contains("CASE WHEN hh.id IS NOT NULL THEN 'HAPPY_HOUR' ELSE r.rate_type END AS rateType");
             assertThat(sql).contains("COALESCE(hh.rate * 100, r.value_inc_vat) AS rate");
             assertThat(sql).contains("AND z.local_time >= :intervalFrom");
