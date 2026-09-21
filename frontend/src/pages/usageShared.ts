@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getHappyHourSavings, getHappyHours, getMeterPoints, getSolarByDay, getSolarByMonth, getSolarDateRanges, getSolarHourly, getStandingChargesByDay } from '../api/client'
+import { getHappyHourSavings, getHappyHours, getMeterPoints, getSolarByDay, getSolarByMonth, getSolarDateRanges, getSolarHourly, getSolarLive, getStandingChargesByDay } from '../api/client'
 import type { MeterPoint, SolarPowerPoint } from '../api/types'
 import { batteryPercentSlots, loadKwSlots, solarKwSlots, type SlotPoint } from '../components/solarTodaySlots'
 
@@ -686,36 +686,60 @@ export function useHappyHourSavings(meterPoints: MeterPoint[] | null, date: stri
   return data
 }
 
+// The viewer's local calendar date ("YYYY-MM-DD") - what "today" means for the Day page.
+export function todayIso(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
+}
+
+// One day's solar/battery/load readings and its solar kWh total. Today comes from the live
+// endpoint - the same source and figures as the Live tab: the day so far straight from Growatt,
+// with its own running kWh total - rather than the stored daily totals, which never include today
+// (the backfill only records finished days). Any other day reads the day's curve plus its stored
+// total. A Growatt failure on the live call surfaces as an error rather than as an empty day.
+async function fetchSolarDay(date: string): Promise<{ points: SolarPowerPoint[]; totalKwh: number }> {
+  if (date === todayIso()) {
+    const live = await getSolarLive()
+    if (live.error !== null) throw new Error(live.error)
+    return { points: live.points, totalKwh: live.solarTodayKwh ?? 0 }
+  }
+  const [hourly, dayTotal] = await Promise.all([getSolarHourly(date), getSolarByDay(date, addDays(date, 1))])
+  return { points: hourly.points, totalKwh: dayTotal.days[0]?.kwh ?? 0 }
+}
+
 // Day page's solar overlay: the intraday power curve (kW, bucketed to half hours) for the
-// line, plus that single day's own kWh total (fetched separately via the by-day endpoint, since
-// a power curve alone can't cheaply be summed back into an accurate energy total).
+// line, plus that single day's own kWh total (fetched separately, since a power curve alone can't
+// cheaply be summed back into an accurate energy total) - see fetchSolarDay for where each comes
+// from.
 export function useSolarDayOverlay(date: string): SolarOverlayData {
   const [data, setData] = useState<SolarOverlayData>(EMPTY_SOLAR)
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([solarIsAvailable(), getSolarHourly(date), getSolarByDay(date, addDays(date, 1))])
-      .then(([available, hourly, dayTotal]) => {
+    Promise.all([solarIsAvailable(), fetchSolarDay(date)])
+      .then(([available, day]) => {
         if (cancelled) return
         if (!available) {
           setData(EMPTY_SOLAR)
           return
         }
         setData({
-          byKey: bucketPowerCurveToHalfHours(hourly.points),
-          solarFine: solarKwSlots(hourly.points),
-          batteryFine: batteryPercentSlots(hourly.points),
-          loadFine: loadKwSlots(hourly.points),
-          totalKwh: dayTotal.days[0]?.kwh ?? 0,
+          byKey: bucketPowerCurveToHalfHours(day.points),
+          solarFine: solarKwSlots(day.points),
+          batteryFine: batteryPercentSlots(day.points),
+          loadFine: loadKwSlots(day.points),
+          totalKwh: day.totalKwh,
           available: true,
           error: null,
-          batteryByKey: bucketBatteryCurveToHalfHours(hourly.points),
-          loadByKey: bucketLoadCurveToHalfHours(hourly.points),
+          batteryByKey: bucketBatteryCurveToHalfHours(day.points),
+          loadByKey: bucketLoadCurveToHalfHours(day.points),
         })
       })
       .catch((err: unknown) => {
         if (cancelled) return
-        setData((d) => ({ ...d, error: err instanceof Error ? err.message : 'Failed to load solar data' }))
+        // Start from empty rather than the previous date's data: leaving that in place would show
+        // another day's curve under this day's error.
+        setData({ ...EMPTY_SOLAR, error: err instanceof Error ? err.message : 'Failed to load solar data' })
       })
     return () => {
       cancelled = true

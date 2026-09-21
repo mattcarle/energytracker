@@ -105,6 +105,20 @@
   color: #d64545;
 }
 
+/* A heads-up rather than a failure (e.g. Octopus data not yet in for the day being shown) - the
+   chart below is still valid, so this is a bordered note in the chart-toggle amber rather than
+   the error red. */
+.usage-page__warning {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--chart-stdchg);
+  border-left-width: 4px;
+  border-radius: 6px;
+  background: var(--code-bg);
+  color: var(--text-h);
+  font-size: 14px;
+}
+
 .usage-page__insights-section {
   margin: 8px 0 24px;
   border: 1px solid var(--border);

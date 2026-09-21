@@ -72,6 +72,10 @@ interface UsagePeriodViewProps {
   // electricity import MPAN - see useHappyHourSavings) - Day page only. Drives its own Insights
   // card, shown only when there's something to report.
   happyHourSavings?: { kwh: number; moneySaved: number } | null
+  // Warnings to show above the chart (e.g. that Octopus data is behind, or a data source failed),
+  // given the MPANs currently selected - so they can ignore a lagging meter the user has switched
+  // off. Empty/absent means nothing to warn about.
+  getWarnings?: (selectedMpans: string[]) => string[]
   // Opt-in, so a future usage-by-X page can still fall back to chart/table-only behaviour.
   enableInsights?: boolean
   // Singular period noun for the Insights section's "Average per X" cards - "Day" for Usage by
@@ -198,6 +202,7 @@ export default function UsagePeriodView({
   loadAvailable = false,
   happyHourKeys,
   happyHourSavings = null,
+  getWarnings,
 }: UsagePeriodViewProps) {
   const isMobile = useIsMobile()
   const [selectedMpans, setSelectedMpans] = useState<Set<string> | null>(null)
@@ -426,6 +431,17 @@ export default function UsagePeriodView({
   const hasAnyUsage =
     rows?.some((row) => Object.values(row.byMpan).some((f) => f.kwh !== 0 || f.total !== 0)) ?? false
 
+  // Solar/battery/load points to plot, whether or not there's any Octopus usage yet - Growatt
+  // reports the current day well before Octopus does, so a day with no usage rows can still have
+  // a curve worth charting.
+  const hasOverlayData =
+    (solarActive && (solarByKey?.size ?? 0) > 0) ||
+    (batteryActive && (batteryByKey?.size ?? 0) > 0) ||
+    (loadActive && (loadByKey?.size ?? 0) > 0)
+  const hasAnyData = hasAnyUsage || hasOverlayData
+
+  const warnings = getWarnings?.(includedMeterPoints.map((mp) => mp.mpan)) ?? []
+
   const labelColCount = periodColumns.length
 
   return (
@@ -542,9 +558,16 @@ export default function UsagePeriodView({
 
       {error && <p className="usage-page__error">{error}</p>}
       {!error && !rows && <p>Loading usage data…</p>}
-      {!error && rows && !hasAnyUsage && <p>{noDataMessage}</p>}
+      {!error &&
+        rows &&
+        warnings.map((warning) => (
+          <p key={warning} className="usage-page__warning" role="status">
+            {warning}
+          </p>
+        ))}
+      {!error && rows && !hasAnyData && <p>{noDataMessage}</p>}
 
-      {!error && rows && hasAnyUsage && showChart && (
+      {!error && rows && hasAnyData && showChart && (
         <div className="usage-page__chart-section">
           <div className="usage-page__chart-toolbar">
             <div className="usage-page__metric-toggle">
@@ -614,7 +637,7 @@ export default function UsagePeriodView({
         </div>
       )}
 
-      {!error && rows && hasAnyUsage && enableInsights && showInsights && insightsData && (
+      {!error && rows && hasAnyData && enableInsights && showInsights && insightsData && (
         <div className="usage-page__insights-section">
           <h2 className="usage-page__insights-title">
             Summary{periodSummaryLabel ? ` for ${periodSummaryLabel}` : ''}

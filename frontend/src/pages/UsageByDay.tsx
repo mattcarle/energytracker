@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { getUsageByHalfHour } from '../api/client'
+import { getUsageByHalfHour, getUsageDateRanges } from '../api/client'
+import { octopusDataWarning } from './octopusDataWarning'
 import UsagePeriodView, { type PeriodColumn } from './UsagePeriodView'
 import {
   addDays,
   formatFullDate,
   halfHourKeys,
-  pad2,
+  solarIsAvailable,
+  todayIso,
   useHappyHourDayOverlay,
   useHappyHourSavings,
   useMeterPoints,
@@ -37,11 +39,6 @@ async function fetchHalfHourItems(mpan: string, fromDate: string, toDate: string
 }
 
 const PERIOD_COLUMNS: PeriodColumn[] = [{ header: 'Time', render: (row) => row.label }]
-
-function todayIso(): string {
-  const now = new Date()
-  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
-}
 
 // A "real" reading for a half-hour has intervalCount > 0 (a row actually came back for that
 // key) and missingIntervalCount === 0 (it wasn't a data-integrity-check placeholder standing in
@@ -100,8 +97,43 @@ export default function UsageByDay() {
   const happyHours = useHappyHourDayOverlay(date)
   const happyHourSavings = useHappyHourSavings(meterPoints, date, happyHours.keys.size > 0)
 
+  // Whether Growatt has ever been set up, and each meter point's latest available Octopus reading
+  // (see octopusDataWarning) - both fetched once, independent of which day is shown.
+  const [growattAvailable, setGrowattAvailable] = useState<boolean | null>(null)
+  const [latestByMpan, setLatestByMpan] = useState<Map<string, string>>(() => new Map())
+
+  useEffect(() => {
+    let cancelled = false
+    solarIsAvailable()
+      .then((available) => {
+        if (!cancelled) setGrowattAvailable(available)
+      })
+      // Can't tell - behave as if Growatt isn't there, i.e. the original roll-back-to-a-full-day.
+      .catch(() => {
+        if (!cancelled) setGrowattAvailable(false)
+      })
+    getUsageDateRanges()
+      .then((ranges) => {
+        if (!cancelled) setLatestByMpan(new Map(ranges.map((r) => [r.mpan, r.latest])))
+      })
+      // The warning is only a nicety - without the ranges the page just doesn't show it.
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   useEffect(() => {
     if (dateChangedByUser) {
+      setAutoStepping(false)
+      return
+    }
+    if (growattAvailable === null) return
+    // Octopus usage lags a day or more behind, but Growatt reports the current day, so with
+    // Growatt set up stay on today (the solar/battery/load curves are worth seeing) and let the
+    // page warn that Octopus's side isn't complete yet, rather than rolling back to the latest
+    // day Octopus has in full.
+    if (growattAvailable) {
       setAutoStepping(false)
       return
     }
@@ -116,7 +148,7 @@ export default function UsageByDay() {
     }
     autoStepCount.current += 1
     setDate((d) => addDays(d, -1))
-  }, [rows, meterPoints, dateChangedByUser])
+  }, [rows, meterPoints, dateChangedByUser, growattAvailable])
 
   // While still auto-stepping backward looking for a day with data, show "loading" rather than
   // a series of "no usage data for X" flashes for each empty day it passes through.
@@ -185,6 +217,14 @@ export default function UsageByDay() {
       loadAvailable={solar.available}
       happyHourKeys={happyHours.keys}
       happyHourSavings={happyHourSavings}
+      getWarnings={(selectedMpans) =>
+        [
+          octopusDataWarning(latestByMpan, selectedMpans, date),
+          // Without this a failed Growatt call (rate limit, bad token, ...) just makes the solar
+          // overlay silently disappear.
+          solar.error ? `Growatt data unavailable: ${solar.error}` : null,
+        ].filter((w): w is string => w !== null)
+      }
     />
   )
 }
