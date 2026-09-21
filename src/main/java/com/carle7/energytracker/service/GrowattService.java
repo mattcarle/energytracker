@@ -206,9 +206,11 @@ public class GrowattService {
         // e.g. an empty-string "data" field (see GrowattApiService.configureGrowattObjectMapper)
         // that parses to no points at all. One immediate retry smooths over that transient miss
         // without masking a genuine outage - a real credentials/device problem already returned
-        // above, and a second consecutive empty result (whether or not it carries its own error
-        // message) is treated as the real answer.
-        if (result.points == null || result.points.isEmpty()) {
+        // above, and a second consecutive empty result is treated as the real answer. Only when
+        // the first call came back with no error: a failure (dropped connection, Growatt's own
+        // error) has already been retried per request inside GrowattApiService, and repeating the
+        // whole fetch on top of that would just multiply the attempts against a struggling server.
+        if ((result.points == null || result.points.isEmpty()) && result.error == null) {
             result = growattApiService.fetchMixData(deviceSn, date);
         }
         return result;

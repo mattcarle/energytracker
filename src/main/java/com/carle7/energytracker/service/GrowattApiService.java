@@ -22,11 +22,15 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
+import java.io.IOException;
+import java.net.SocketTimeoutException;
 import java.net.URI;
+import java.net.http.HttpTimeoutException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 @Service
 public class GrowattApiService {
@@ -42,6 +46,16 @@ public class GrowattApiService {
     // 5-minute readings with room to spare.
     private static final int MIX_DATA_PER_PAGE = 100;
     private static final int MIX_DATA_MAX_PAGES = 5;
+
+    // Growatt intermittently cuts a response off partway through (seen live on mix_data, the
+    // largest payload: the server closes the connection mid-body, surfacing as "chunked transfer
+    // encoding ... EOF reached while reading" wrapped in a RestClientException) or drops the
+    // connection outright. A retry almost always succeeds, so each request is attempted up to
+    // MAX_ATTEMPTS times with a short pause before the 2nd and 3rd. Timeouts are deliberately NOT
+    // retried - against a hung server that would multiply the 30 s read timeout.
+    private static final int MAX_ATTEMPTS = 3;
+    // Not final so a test can zero the pauses.
+    private long[] retryBackoffMs = {300, 1000};
 
     @Autowired
     private GrowattConfig growattConfig;
@@ -184,7 +198,8 @@ public class GrowattApiService {
 
         try {
             long startTime = System.currentTimeMillis();
-            ResponseEntity<String> response = restTemplate.exchange(URI.create(url), HttpMethod.GET, entity, String.class);
+            ResponseEntity<String> response = executeWithRetry(url,
+                    () -> restTemplate.exchange(URI.create(url), HttpMethod.GET, entity, String.class));
             long durationMs = System.currentTimeMillis() - startTime;
             logger.info("GET {} completed in {} ms", url, durationMs);
 
@@ -207,7 +222,7 @@ public class GrowattApiService {
             }
             return parsed;
         } catch (Exception e) {
-            logger.error("Failed to fetch {}: {}", url, e.getMessage(), e);
+            logRequestFailure("fetch", url, e);
             return null;
         }
     }
@@ -228,7 +243,8 @@ public class GrowattApiService {
 
         try {
             long startTime = System.currentTimeMillis();
-            ResponseEntity<String> response = restTemplate.postForEntity(URI.create(url), entity, String.class);
+            ResponseEntity<String> response = executeWithRetry(url,
+                    () -> restTemplate.postForEntity(URI.create(url), entity, String.class));
             long durationMs = System.currentTimeMillis() - startTime;
             logger.info("POST {} completed in {} ms", url, durationMs);
 
@@ -254,8 +270,68 @@ public class GrowattApiService {
             }
             return new GrowattResult<>(parsed, null);
         } catch (Exception e) {
-            logger.error("Failed to post to {}: {}", url, e.getMessage(), e);
+            logRequestFailure("post to", url, e);
+            if (isTransientIoFailure(e)) {
+                return new GrowattResult<>(null, "Could not get a complete response from Growatt (connection problem, tried "
+                        + MAX_ATTEMPTS + " times)");
+            }
             return new GrowattResult<>(null, e.getMessage() != null ? e.getMessage() : "Failed to reach Growatt API");
+        }
+    }
+
+    // Runs one HTTP call, retrying it (see MAX_ATTEMPTS) when it fails with a transient I/O
+    // error; anything else - or the last attempt's failure - propagates to the caller as before.
+    private ResponseEntity<String> executeWithRetry(String url, Supplier<ResponseEntity<String>> call) {
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return call.get();
+            } catch (RuntimeException e) {
+                if (attempt >= MAX_ATTEMPTS || !isTransientIoFailure(e)) {
+                    throw e;
+                }
+                logger.warn("Growatt request to {} failed (attempt {}/{}): {} - retrying",
+                        url, attempt, MAX_ATTEMPTS, rootCauseSummary(e));
+                try {
+                    Thread.sleep(retryBackoffMs[Math.min(attempt - 1, retryBackoffMs.length - 1)]);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
+            }
+        }
+    }
+
+    // An I/O failure (a cut-off body, a reset or dropped connection, an unreachable network) that
+    // is worth trying again. Timeouts are excluded - see MAX_ATTEMPTS. Package-private so a test
+    // can pin down exactly which failures count.
+    static boolean isTransientIoFailure(Throwable failure) {
+        boolean io = false;
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SocketTimeoutException || cause instanceof HttpTimeoutException) {
+                return false;
+            }
+            if (cause instanceof IOException) {
+                io = true;
+            }
+        }
+        return io;
+    }
+
+    private static String rootCauseSummary(Throwable failure) {
+        Throwable root = failure;
+        while (root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        return root.getClass().getSimpleName() + ": " + root.getMessage();
+    }
+
+    // A transient I/O failure is logged as just its root cause: the full trace is ~100 lines of
+    // servlet-filter frames that add nothing. Anything unexpected keeps its stack trace.
+    private void logRequestFailure(String action, String url, Exception e) {
+        if (isTransientIoFailure(e)) {
+            logger.error("Failed to {} {} after {} attempts: {}", action, url, MAX_ATTEMPTS, rootCauseSummary(e));
+        } else {
+            logger.error("Failed to {} {}: {}", action, url, e.getMessage(), e);
         }
     }
 
