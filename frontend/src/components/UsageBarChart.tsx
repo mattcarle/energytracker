@@ -1,11 +1,11 @@
 import { Fragment } from 'react'
 import {
+  Area,
   Bar,
   CartesianGrid,
   Cell,
   ComposedChart,
   DefaultTooltipContent,
-  Line,
   ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
@@ -233,6 +233,29 @@ function formatValue(value: number, metric: ChartMetric): string {
 
 function formatSolarValue(value: number, unit: 'kWh' | 'kW'): string {
   return `${value.toFixed(2)} ${unit}`
+}
+
+// Shared look for the solar/battery/load overlay series: the line with a translucent fill beneath
+// it. Recharts draws areas at layer 100, behind the bars (300), where the opaque bars would simply
+// cover the fill - so it's lifted to just in front of them, and kept translucent so the bars
+// still read through it. baseValue 0 anchors the fill to the zero line rather than to the bottom
+// of the (sometimes negative-floored, see alignedFloor) axis domain.
+const OVERLAY_FILL_OPACITY = 0.16
+const OVERLAY_Z_INDEX = 350
+
+function overlayAreaProps(color: string) {
+  return {
+    type: 'monotone',
+    stroke: color,
+    strokeWidth: 3,
+    fill: color,
+    fillOpacity: OVERLAY_FILL_OPACITY,
+    baseValue: 0,
+    dot: false,
+    connectNulls: false,
+    isAnimationActive: false,
+    zIndex: OVERLAY_Z_INDEX,
+  } as const
 }
 
 // A series drawn at 5-minute resolution whose tooltip entry has to be added by hand: `byLabel` is
@@ -737,92 +760,62 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
               dataKeys deliberately differ from the half-hour series' below, since Recharts drops
               tooltip entries that share a dataKey. */}
           {solar?.fineSeries && (
-            <Line
+            <Area
+              {...overlayAreaProps('var(--chart-solar)')}
               xAxisId={FINE_X_AXIS_ID}
               yAxisId={solar.useSecondaryAxis ? 'solar' : undefined}
               data={fineLineData(solar.fineSeries, 'solarFineValue')}
-              type="monotone"
               dataKey="solarFineValue"
-              stroke="var(--chart-solar)"
-              strokeWidth={3}
-              dot={false}
-              connectNulls={false}
-              isAnimationActive={false}
               name={solarSeriesName}
               tooltipType="none"
               activeDot={false}
             />
           )}
           {battery?.fineSeries && (
-            <Line
+            <Area
+              {...overlayAreaProps('var(--chart-battery)')}
               xAxisId={FINE_X_AXIS_ID}
               yAxisId="battery"
               data={fineLineData(battery.fineSeries, 'batteryFineValue')}
-              type="monotone"
               dataKey="batteryFineValue"
-              stroke="var(--chart-battery)"
-              strokeWidth={3}
-              dot={false}
-              connectNulls={false}
-              isAnimationActive={false}
               name={BATTERY_SERIES_NAME}
               tooltipType="none"
               activeDot={false}
             />
           )}
           {load?.fineSeries && (
-            <Line
+            <Area
+              {...overlayAreaProps('var(--chart-load)')}
               xAxisId={FINE_X_AXIS_ID}
               yAxisId={load.useSecondaryAxis ? 'solar' : undefined}
               data={fineLineData(load.fineSeries, 'loadFineValue')}
-              type="monotone"
               dataKey="loadFineValue"
-              stroke="var(--chart-load)"
-              strokeWidth={3}
-              dot={false}
-              connectNulls={false}
-              isAnimationActive={false}
               name={LOAD_SERIES_NAME}
               tooltipType="none"
               activeDot={false}
             />
           )}
           {solar && !solar.fineSeries && (
-            <Line
+            <Area
+              {...overlayAreaProps('var(--chart-solar)')}
               yAxisId={solar.useSecondaryAxis ? 'solar' : undefined}
-              type="monotone"
               dataKey="solarValue"
-              stroke="var(--chart-solar)"
-              strokeWidth={3}
-              dot={false}
-              connectNulls={false}
-              isAnimationActive={false}
               name={solarSeriesName}
             />
           )}
           {battery && !battery.fineSeries && (
-            <Line
+            <Area
+              {...overlayAreaProps('var(--chart-battery)')}
               yAxisId="battery"
-              type="monotone"
               dataKey="batteryValue"
-              stroke="var(--chart-battery)"
-              strokeWidth={3}
-              dot={false}
-              connectNulls={false}
-              isAnimationActive={false}
               name={BATTERY_SERIES_NAME}
             />
           )}
           {load && !load.fineSeries && (
-            <Line
+            <Area
+              {...overlayAreaProps('var(--chart-load)')}
               yAxisId={load.useSecondaryAxis ? 'solar' : undefined}
-              type="monotone"
               dataKey="loadValue"
-              stroke="var(--chart-load)"
-              strokeWidth={3}
-              dot={false}
-              connectNulls={false}
-              isAnimationActive={false}
               name={LOAD_SERIES_NAME}
             />
           )}
