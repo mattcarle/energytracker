@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getHappyHourSavings, getHappyHours, getMeterPoints, getSolarByDay, getSolarByMonth, getSolarDateRanges, getSolarHourly, getStandingChargesByDay } from '../api/client'
 import type { MeterPoint, SolarPowerPoint } from '../api/types'
+import { batteryPercentSlots, loadKwSlots, solarKwSlots, type SlotPoint } from '../components/solarTodaySlots'
 
 export interface MpanFigures {
   kwh: number
@@ -457,6 +458,15 @@ export interface SolarOverlayData {
   totalKwh: number | null
   available: boolean
   error: string | null
+  // Day page only (see useSolarDayOverlay) - the same solar power curve as byKey (kW) but at its
+  // native 5-minute resolution rather than averaged per half hour: 288 slots across the day, null
+  // where there's no reading. Drawn as the visible solar line, with byKey's half-hour averages
+  // kept for the tooltip so it lines up with the half-hourly bars.
+  solarFine?: SlotPoint[] | null
+  // Day page only - the battery (percent) and load (kW) curves at native 5-minute resolution, same
+  // idea as solarFine.
+  batteryFine?: SlotPoint[] | null
+  loadFine?: SlotPoint[] | null
   // Day page only (see useSolarDayOverlay) - battery state of charge (0-100), averaged per half
   // hour. Undefined/null on the period-based pages, which have no equivalent intraday data to
   // derive it from.
@@ -467,6 +477,9 @@ export interface SolarOverlayData {
 }
 
 const EMPTY_SOLAR: SolarOverlayData = {
+  solarFine: null,
+  batteryFine: null,
+  loadFine: null,
   byKey: null,
   totalKwh: null,
   available: false,
@@ -690,6 +703,9 @@ export function useSolarDayOverlay(date: string): SolarOverlayData {
         }
         setData({
           byKey: bucketPowerCurveToHalfHours(hourly.points),
+          solarFine: solarKwSlots(hourly.points),
+          batteryFine: batteryPercentSlots(hourly.points),
+          loadFine: loadKwSlots(hourly.points),
           totalKwh: dayTotal.days[0]?.kwh ?? 0,
           available: true,
           error: null,

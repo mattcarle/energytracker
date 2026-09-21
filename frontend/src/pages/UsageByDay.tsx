@@ -176,9 +176,12 @@ export default function UsageByDay() {
       solarTotalKwh={solar.totalKwh}
       solarAvailable={solar.available}
       solarUnit="kW"
+      solarFine={solar.solarFine}
       batteryByKey={solar.batteryByKey}
+      batteryFine={solar.batteryFine}
       batteryAvailable={solar.available}
       loadByKey={solar.loadByKey}
+      loadFine={solar.loadFine}
       loadAvailable={solar.available}
       happyHourKeys={happyHours.keys}
       happyHourSavings={happyHourSavings}

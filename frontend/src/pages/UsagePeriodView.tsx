@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { MeterPoint } from '../api/types'
 import NetUsageBarChart from '../components/NetUsageBarChart'
+import type { SlotPoint } from '../components/solarTodaySlots'
 import UsageBarChart from '../components/UsageBarChart'
 import { useIsMobile } from '../hooks/useIsMobile'
 import {
@@ -48,14 +49,20 @@ interface UsagePeriodViewProps {
   solarTotalKwh?: number | null
   solarAvailable?: boolean
   solarUnit?: 'kWh' | 'kW'
+  // Day page only - the solar power curve at 5-minute resolution, drawn as the visible line in
+  // place of solarByKey's half-hour averages (see SolarOverlayData.solarFine).
+  solarFine?: SlotPoint[] | null
   // Battery state-of-charge overlay (0-100) - Day page only, since it comes from the same live
   // Growatt call as solar but has its own checkbox (batteryAvailable/showBattery) so either can
   // be shown/hidden independently.
   batteryByKey?: Map<string, number> | null
+  // Same 5-minute-resolution replacement for the half-hour line as solarFine.
+  batteryFine?: SlotPoint[] | null
   batteryAvailable?: boolean
   // House load consumption overlay (kW) - Day page only, same reasoning/independence as
   // battery's checkbox above.
   loadByKey?: Map<string, number> | null
+  loadFine?: SlotPoint[] | null
   loadAvailable?: boolean
   // Period keys that fall within a configured happy-hour window - Day page only (see
   // UsageBarChart.happyHourKeys for why). Undefined/empty on every other page, which just
@@ -182,9 +189,12 @@ export default function UsagePeriodView({
   solarTotalKwh = null,
   solarAvailable = false,
   solarUnit = 'kWh',
+  solarFine = null,
   batteryByKey = null,
+  batteryFine = null,
   batteryAvailable = false,
   loadByKey = null,
+  loadFine = null,
   loadAvailable = false,
   happyHourKeys,
   happyHourSavings = null,
@@ -580,12 +590,23 @@ export default function UsagePeriodView({
                       // magnitude to read together. The £ view always needs its own axis though,
                       // since £ isn't comparable to either on a shared scale.
                       useSecondaryAxis: chartView === 'cost',
+                      fineSeries: solarFine ?? undefined,
                     }
                   : undefined
               }
-              battery={batteryActive && batteryByKey ? { byKey: batteryByKey } : undefined}
+              battery={
+                batteryActive && batteryByKey
+                  ? { byKey: batteryByKey, fineSeries: batteryFine ?? undefined }
+                  : undefined
+              }
               load={
-                loadActive && loadByKey ? { byKey: loadByKey, useSecondaryAxis: chartView === 'cost' } : undefined
+                loadActive && loadByKey
+                  ? {
+                      byKey: loadByKey,
+                      useSecondaryAxis: chartView === 'cost',
+                      fineSeries: loadFine ?? undefined,
+                    }
+                  : undefined
               }
               happyHourKeys={happyHourKeys}
             />

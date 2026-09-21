@@ -4,6 +4,7 @@ import {
   CartesianGrid,
   Cell,
   ComposedChart,
+  DefaultTooltipContent,
   Line,
   ReferenceArea,
   ReferenceLine,
@@ -11,10 +12,12 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  type TooltipPayloadEntry,
 } from 'recharts'
 import type { MeterPoint } from '../api/types'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { meterPointLabel, type PeriodRow } from '../pages/usageShared'
+import { MINUTES_PER_DAY, type SlotPoint } from './solarTodaySlots'
 import './UsageBarChart.css'
 
 const MPAN_COLORS = ['var(--chart-mpan-1)', 'var(--chart-mpan-2)', 'var(--chart-mpan-3)']
@@ -61,6 +64,14 @@ export type ChartMetric = 'kwh' | 'cost'
 
 const SOLAR_SERIES_NAME_KWH = 'Solar'
 const SOLAR_SERIES_NAME_KW = 'Solar'
+// The tooltip's stand-ins for the 5-minute solar/battery/load lines - see
+// SolarOverlayProps.fineSeries.
+const SOLAR_AVG_SERIES_NAME = 'Solar (30-min avg)'
+const BATTERY_AVG_SERIES_NAME = 'Battery (30-min avg)'
+const LOAD_AVG_SERIES_NAME = 'Load (30-min avg)'
+// Id of the hidden numeric time axis the 5-minute lines are plotted against - one shared by solar,
+// battery and load, since they all span the same 0-1440 minutes of the day.
+const FINE_X_AXIS_ID = 'fine-time'
 
 export interface SolarOverlayProps {
   // Period key (PeriodRow.key) -> value - kWh for the period-based pages, kW for the Day page's
@@ -71,6 +82,11 @@ export interface SolarOverlayProps {
   // view today, since both kWh and kW sit close enough to the bars' own kWh magnitude to share
   // an axis, but £ never does.
   useSecondaryAxis: boolean
+  // Day page only - the same curve as byKey at its native 5-minute resolution (see
+  // SolarOverlayData.solarFine). When present it's what's drawn as the solar line, on its own
+  // hidden numeric time axis so it isn't forced onto the half-hourly bars' category positions;
+  // byKey then only feeds the tooltip, whose per-half-hour figures match the bars.
+  fineSeries?: SlotPoint[]
 }
 
 export interface BatteryOverlayProps {
@@ -79,6 +95,8 @@ export interface BatteryOverlayProps {
   // axis (see the "battery" YAxis below) rather than sharing with the bars or with solar - a
   // percentage isn't on the same scale as either kWh/£ or kW.
   byKey: Map<string, number>
+  // Same meaning as SolarOverlayProps.fineSeries.
+  fineSeries?: SlotPoint[]
 }
 
 export interface LoadOverlayProps {
@@ -89,6 +107,8 @@ export interface LoadOverlayProps {
   // Same meaning as SolarOverlayProps.useSecondaryAxis - shares the "solar" kW axis with solar
   // when one's in use, so both kW curves read off the same scale.
   useSecondaryAxis: boolean
+  // Same meaning as SolarOverlayProps.fineSeries.
+  fineSeries?: SlotPoint[]
 }
 
 interface UsageBarChartProps {
@@ -199,6 +219,63 @@ function formatSolarValue(value: number, unit: 'kWh' | 'kW'): string {
   return `${value.toFixed(2)} ${unit}`
 }
 
+// A series drawn at 5-minute resolution whose tooltip entry has to be added by hand: `byLabel` is
+// its half-hour average per bar, keyed by the label the tooltip is given for a hovered bar.
+interface FineAverage {
+  name: string
+  color: string
+  byLabel: Map<string, number>
+}
+
+// Appends the hovered bar's half-hour average for each 5-minute series to a tooltip's entries (a
+// series with no average for that bar - e.g. after its last reading - is left out).
+function withFineAverages(
+  payload: readonly TooltipPayloadEntry[],
+  label: string | number | undefined,
+  averages: FineAverage[],
+): TooltipPayloadEntry[] {
+  const extra: TooltipPayloadEntry[] = []
+  for (const average of averages) {
+    const value = label !== undefined ? average.byLabel.get(String(label)) : undefined
+    if (value === undefined) continue
+    extra.push({
+      name: average.name,
+      value,
+      color: average.color,
+      dataKey: average.name,
+      graphicalItemId: average.name,
+    })
+  }
+  return [...payload, ...extra]
+}
+
+// Every value a line can reach, for sizing the axis it sits on - includes the 5-minute series when
+// there is one, whose peaks run higher than the half-hour averages in byKey and would otherwise
+// poke out of the top of an axis sized from byKey alone.
+function plotValues(overlay: { byKey: Map<string, number>; fineSeries?: SlotPoint[] }): number[] {
+  const values = [...overlay.byKey.values()]
+  for (const point of overlay.fineSeries ?? []) {
+    if (point.value !== null) values.push(point.value)
+  }
+  return values
+}
+
+// The 5-minute line's data: its own points rather than the chart's 48 rows, keyed by `valueKey`.
+function fineLineData(series: SlotPoint[], valueKey: string): Record<string, number | null>[] {
+  return series.map((point) => ({ minutes: point.minutes, [valueKey]: point.value }))
+}
+
+// Half-hour value per bar label - what the tooltip reports for a 5-minute series (see
+// FineAverage).
+function averageByLabel(rows: PeriodRow[], byKey: Map<string, number>): Map<string, number> {
+  const result = new Map<string, number>()
+  for (const row of rows) {
+    const value = byKey.get(row.key)
+    if (value !== undefined) result.set(row.chartLabel, value)
+  }
+  return result
+}
+
 const BATTERY_SERIES_NAME = 'Battery'
 const LOAD_SERIES_NAME = 'Load'
 
@@ -213,6 +290,19 @@ function formatLoadValue(value: number): string {
 export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvailableByMpan, solar, battery, load, happyHourKeys }: UsageBarChartProps) {
   const isMobile = useIsMobile()
   const solarSeriesName = solar?.unit === 'kW' ? SOLAR_SERIES_NAME_KW : SOLAR_SERIES_NAME_KWH
+  // Which lines are drawn at 5-minute resolution (Day page) - each gets a hand-built tooltip
+  // entry with its half-hour average, see the Tooltip's content.
+  const fineAverages: FineAverage[] = []
+  if (solar?.fineSeries) {
+    fineAverages.push({ name: SOLAR_AVG_SERIES_NAME, color: 'var(--chart-solar)', byLabel: averageByLabel(rows, solar.byKey) })
+  }
+  if (battery?.fineSeries) {
+    fineAverages.push({ name: BATTERY_AVG_SERIES_NAME, color: 'var(--chart-battery)', byLabel: averageByLabel(rows, battery.byKey) })
+  }
+  if (load?.fineSeries) {
+    fineAverages.push({ name: LOAD_AVG_SERIES_NAME, color: 'var(--chart-load)', byLabel: averageByLabel(rows, load.byKey) })
+  }
+  const hasFineSeries = fineAverages.length > 0
   const data = rows.map((row) => {
     const point: Record<string, number | string | boolean | null> = { dayLabel: row.chartLabel }
     if (solar) {
@@ -297,12 +387,12 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
     // (now always set whenever battery needs one) doesn't clip them back down to the bars' own
     // range.
     if (solar && !solar.useSecondaryAxis) {
-      for (const value of solar.byKey.values()) {
+      for (const value of plotValues(solar)) {
         if (value > primMaxRaw) primMaxRaw = value
       }
     }
     if (load && !load.useSecondaryAxis) {
-      for (const value of load.byKey.values()) {
+      for (const value of plotValues(load)) {
         if (value > primMaxRaw) primMaxRaw = value
       }
     }
@@ -327,12 +417,12 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
       // needs a secondary axis, so its max has to fit whichever curve reaches higher.
       let kwMaxRaw = 0
       if (solar?.useSecondaryAxis) {
-        for (const value of solar.byKey.values()) {
+        for (const value of plotValues(solar)) {
           if (value > kwMaxRaw) kwMaxRaw = value
         }
       }
       if (load?.useSecondaryAxis) {
-        for (const value of load.byKey.values()) {
+        for (const value of plotValues(load)) {
           if (value > kwMaxRaw) kwMaxRaw = value
         }
       }
@@ -428,6 +518,15 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
             tick={{ fill: 'var(--text)', fontSize: 11 }}
             interval={tickInterval}
           />
+          {hasFineSeries && (
+            <XAxis
+              xAxisId={FINE_X_AXIS_ID}
+              type="number"
+              dataKey="minutes"
+              domain={[0, MINUTES_PER_DAY]}
+              hide
+            />
+          )}
           <YAxis
             domain={primaryDomain}
             tick={{ fill: 'var(--text)', fontSize: 11 }}
@@ -461,10 +560,29 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
               the finger that triggered it, so it's dropped entirely on mobile rather than shown. */}
           {!isMobile && (
             <Tooltip
+              // With a 5-minute line, Recharts can't supply that series' tooltip entry (it sits
+              // on a separate axis with a different point count - see fineSeries), so the
+              // half-hour average for the hovered bar is appended to the default content by hand.
+              content={
+                hasFineSeries
+                  ? (props) => (
+                      <DefaultTooltipContent
+                        {...props}
+                        payload={withFineAverages(props.payload, props.label, fineAverages)}
+                      />
+                    )
+                  : undefined
+              }
               formatter={(value, name) => {
-                if (solar && name === solarSeriesName) return [formatSolarValue(Number(value), solar.unit), name]
-                if (battery && name === BATTERY_SERIES_NAME) return [formatBatteryValue(Number(value)), name]
-                if (load && name === LOAD_SERIES_NAME) return [formatLoadValue(Number(value)), name]
+                if (solar && (name === solarSeriesName || name === SOLAR_AVG_SERIES_NAME)) {
+                  return [formatSolarValue(Number(value), solar.unit), name]
+                }
+                if (battery && (name === BATTERY_SERIES_NAME || name === BATTERY_AVG_SERIES_NAME)) {
+                  return [formatBatteryValue(Number(value)), name]
+                }
+                if (load && (name === LOAD_SERIES_NAME || name === LOAD_AVG_SERIES_NAME)) {
+                  return [formatLoadValue(Number(value)), name]
+                }
                 return [formatValue(Number(value), metric), name]
               }}
               contentStyle={{
@@ -562,7 +680,64 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
               </Fragment>
             )
           })}
-          {solar && (
+          {/* The 5-minute lines (Day page): each is drawn from its own 288 points against the shared
+              hidden time axis. Their tooltip entries and hover markers are switched off - both
+              index into the bars' 48 rows, so they'd land on the wrong point of these series; the
+              tooltip gets each one's half-hour average from the Tooltip's content instead. Their
+              dataKeys deliberately differ from the half-hour series' below, since Recharts drops
+              tooltip entries that share a dataKey. */}
+          {solar?.fineSeries && (
+            <Line
+              xAxisId={FINE_X_AXIS_ID}
+              yAxisId={solar.useSecondaryAxis ? 'solar' : undefined}
+              data={fineLineData(solar.fineSeries, 'solarFineValue')}
+              type="monotone"
+              dataKey="solarFineValue"
+              stroke="var(--chart-solar)"
+              strokeWidth={3}
+              dot={false}
+              connectNulls={false}
+              isAnimationActive={false}
+              name={solarSeriesName}
+              tooltipType="none"
+              activeDot={false}
+            />
+          )}
+          {battery?.fineSeries && (
+            <Line
+              xAxisId={FINE_X_AXIS_ID}
+              yAxisId="battery"
+              data={fineLineData(battery.fineSeries, 'batteryFineValue')}
+              type="monotone"
+              dataKey="batteryFineValue"
+              stroke="var(--chart-battery)"
+              strokeWidth={3}
+              dot={false}
+              connectNulls={false}
+              isAnimationActive={false}
+              name={BATTERY_SERIES_NAME}
+              tooltipType="none"
+              activeDot={false}
+            />
+          )}
+          {load?.fineSeries && (
+            <Line
+              xAxisId={FINE_X_AXIS_ID}
+              yAxisId={load.useSecondaryAxis ? 'solar' : undefined}
+              data={fineLineData(load.fineSeries, 'loadFineValue')}
+              type="monotone"
+              dataKey="loadFineValue"
+              stroke="var(--chart-load)"
+              strokeWidth={3}
+              dot={false}
+              connectNulls={false}
+              isAnimationActive={false}
+              name={LOAD_SERIES_NAME}
+              tooltipType="none"
+              activeDot={false}
+            />
+          )}
+          {solar && !solar.fineSeries && (
             <Line
               yAxisId={solar.useSecondaryAxis ? 'solar' : undefined}
               type="monotone"
@@ -575,7 +750,7 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
               name={solarSeriesName}
             />
           )}
-          {battery && (
+          {battery && !battery.fineSeries && (
             <Line
               yAxisId="battery"
               type="monotone"
@@ -588,7 +763,7 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
               name={BATTERY_SERIES_NAME}
             />
           )}
-          {load && (
+          {load && !load.fineSeries && (
             <Line
               yAxisId={load.useSecondaryAxis ? 'solar' : undefined}
               type="monotone"

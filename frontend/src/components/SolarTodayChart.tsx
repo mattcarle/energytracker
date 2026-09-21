@@ -1,7 +1,7 @@
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { SolarPowerPoint } from '../api/types'
 import { useIsMobile } from '../hooks/useIsMobile'
-import { MINUTES_PER_DAY, bucketToFiveMinuteSlots } from './solarTodaySlots'
+import { MINUTES_PER_DAY, solarKwSlots } from './solarTodaySlots'
 
 // Every 3 hours on desktop, every 6 on a phone-width chart where 9 labels wouldn't fit. The last
 // tick (24:00) closes the day so the axis visibly spans midnight to midnight.
@@ -16,7 +16,7 @@ function formatClock(totalMinutes: number): string {
 
 export default function SolarTodayChart({ points }: { points: SolarPowerPoint[] }) {
   const isMobile = useIsMobile()
-  const data = bucketToFiveMinuteSlots(points)
+  const data = solarKwSlots(points)
 
   return (
     <ResponsiveContainer width="100%" height={210}>
@@ -57,7 +57,7 @@ export default function SolarTodayChart({ points }: { points: SolarPowerPoint[] 
             from scratch each time would be distracting. */}
         <Area
           type="monotone"
-          dataKey="kw"
+          dataKey="value"
           name="Solar"
           stroke="var(--chart-solar)"
           fill="var(--chart-solar)"
