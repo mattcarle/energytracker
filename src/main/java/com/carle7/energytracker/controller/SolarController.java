@@ -19,7 +19,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.temporal.TemporalAdjusters;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
@@ -52,16 +55,22 @@ public class SolarController {
             return new SolarByDayResponse(List.of(), emptyTotals());
         }
 
-        LocalDate effectiveFromDate = effectiveFromDate(fromDate);
-        LocalDate effectiveToDate = effectiveToDate(toDate);
+        LocalDate today = growattService.today();
+        LocalDate effectiveFromDate = effectiveFromDate(fromDate, today);
+        LocalDate effectiveToDate = effectiveToDate(toDate, today);
 
         List<SolarGeneration> rows = solarGenerationRepository
                 .findByPlantIdAndGenerationDateGreaterThanEqualAndGenerationDateLessThanOrderByGenerationDateAsc(
-                        plantId, effectiveFromDate, effectiveToDate);
+                        plantId, effectiveFromDate, storedRangeEnd(effectiveToDate, today));
 
-        List<SolarDayEntry> days = rows.stream()
+        List<SolarDayEntry> days = new ArrayList<>(rows.stream()
                 .map(r -> new SolarDayEntry(r.getGenerationDate(), r.getEnergyKwh()))
-                .toList();
+                .toList());
+        // Stored rows all end before today, so appending keeps the list in date order.
+        BigDecimal todayKwh = liveTodayKwh(effectiveFromDate, effectiveToDate, today);
+        if (todayKwh != null) {
+            days.add(new SolarDayEntry(today, todayKwh));
+        }
 
         return new SolarByDayResponse(days, computeTotalsFromDays(days));
     }
@@ -76,8 +85,13 @@ public class SolarController {
             return new SolarByWeekResponse(List.of(), emptyTotals());
         }
 
+        LocalDate today = growattService.today();
+        LocalDate effectiveFromDate = effectiveFromDate(fromDate, today);
+        LocalDate effectiveToDate = effectiveToDate(toDate, today);
         List<SolarPeriodEntry> weeks = toPeriodEntries(
-                solarGenerationRepository.findByWeek(plantId, effectiveFromDate(fromDate), effectiveToDate(toDate)));
+                solarGenerationRepository.findByWeek(plantId, effectiveFromDate, storedRangeEnd(effectiveToDate, today)));
+        weeks = withLiveToday(weeks, today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)),
+                liveTodayKwh(effectiveFromDate, effectiveToDate, today));
         return new SolarByWeekResponse(weeks, computeTotalsFromPeriods(weeks));
     }
 
@@ -91,8 +105,12 @@ public class SolarController {
             return new SolarByMonthResponse(List.of(), emptyTotals());
         }
 
+        LocalDate today = growattService.today();
+        LocalDate effectiveFromDate = effectiveFromDate(fromDate, today);
+        LocalDate effectiveToDate = effectiveToDate(toDate, today);
         List<SolarPeriodEntry> months = toPeriodEntries(
-                solarGenerationRepository.findByMonth(plantId, effectiveFromDate(fromDate), effectiveToDate(toDate)));
+                solarGenerationRepository.findByMonth(plantId, effectiveFromDate, storedRangeEnd(effectiveToDate, today)));
+        months = withLiveToday(months, today.withDayOfMonth(1), liveTodayKwh(effectiveFromDate, effectiveToDate, today));
         return new SolarByMonthResponse(months, computeTotalsFromPeriods(months));
     }
 
@@ -106,8 +124,12 @@ public class SolarController {
             return new SolarByYearResponse(List.of(), emptyTotals());
         }
 
+        LocalDate today = growattService.today();
+        LocalDate effectiveFromDate = effectiveFromDate(fromDate, today);
+        LocalDate effectiveToDate = effectiveToDate(toDate, today);
         List<SolarPeriodEntry> years = toPeriodEntries(
-                solarGenerationRepository.findByYear(plantId, effectiveFromDate(fromDate), effectiveToDate(toDate)));
+                solarGenerationRepository.findByYear(plantId, effectiveFromDate, storedRangeEnd(effectiveToDate, today)));
+        years = withLiveToday(years, today.withDayOfYear(1), liveTodayKwh(effectiveFromDate, effectiveToDate, today));
         return new SolarByYearResponse(years, computeTotalsFromPeriods(years));
     }
 
@@ -218,12 +240,54 @@ public class SolarController {
         return rows.stream().map(r -> new SolarPeriodEntry(r.getPeriod(), r.getKwh())).toList();
     }
 
-    private LocalDate effectiveFromDate(LocalDate fromDate) {
-        return fromDate != null ? fromDate : growattService.today().withDayOfMonth(1);
+    private LocalDate effectiveFromDate(LocalDate fromDate, LocalDate today) {
+        return fromDate != null ? fromDate : today.withDayOfMonth(1);
     }
 
-    private LocalDate effectiveToDate(LocalDate toDate) {
-        return toDate != null ? toDate : growattService.today().plusDays(1);
+    private LocalDate effectiveToDate(LocalDate toDate, LocalDate today) {
+        return toDate != null ? toDate : today.plusDays(1);
+    }
+
+    // solar_generation never holds today (the backfill stops at yesterday - see
+    // GrowattService.loadSolarData), so stored rows are only read up to today, exclusive; today's
+    // running total comes live from Growatt instead (see liveTodayKwh). Cutting the stored query
+    // off at today also means a stray stored row for today can't be double counted.
+    private static LocalDate storedRangeEnd(LocalDate toDate, LocalDate today) {
+        return toDate.isAfter(today) ? today : toDate;
+    }
+
+    // Today's generation so far, or null when today isn't inside [fromDate, toDate) - so Growatt
+    // is only called for pages that actually show today - or when Growatt can't supply it, in
+    // which case the result is just today left out, as it was before this was added.
+    private BigDecimal liveTodayKwh(LocalDate fromDate, LocalDate toDate, LocalDate today) {
+        if (today.isBefore(fromDate) || !today.isBefore(toDate)) {
+            return null;
+        }
+        return growattService.getTodayKwh();
+    }
+
+    // Adds today's kWh to the period entry that contains it (periodStart is that period's start
+    // date - the same key the stored by-week/by-month/by-year queries group on), inserting a new
+    // entry, in period order, when none of the stored rows fall in that period yet.
+    private static List<SolarPeriodEntry> withLiveToday(List<SolarPeriodEntry> stored, LocalDate periodStart, BigDecimal todayKwh) {
+        if (todayKwh == null) {
+            return stored;
+        }
+        List<SolarPeriodEntry> result = new ArrayList<>();
+        boolean merged = false;
+        for (SolarPeriodEntry entry : stored) {
+            if (entry.getPeriod().equals(periodStart)) {
+                result.add(new SolarPeriodEntry(periodStart, entry.getKwh().add(todayKwh)));
+                merged = true;
+            } else {
+                result.add(entry);
+            }
+        }
+        if (!merged) {
+            result.add(new SolarPeriodEntry(periodStart, todayKwh));
+            result.sort(Comparator.comparing(SolarPeriodEntry::getPeriod));
+        }
+        return result;
     }
 
     private SolarTotals emptyTotals() {

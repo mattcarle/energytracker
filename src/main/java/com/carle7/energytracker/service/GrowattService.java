@@ -220,6 +220,25 @@ public class GrowattService {
         return response != null ? response.data : null;
     }
 
+    // Today's generation so far (kWh, plant-level - the same level the stored daily totals come
+    // from), straight from Growatt. Today is never persisted (see loadSolarData: the backfill
+    // stops at yesterday and resumes from the latest stored date + 1, so a stored partial row
+    // for today would never be corrected), so anything wanting today included in a solar total
+    // has to add this on at read time. Null when Growatt can't say - callers treat that as "no
+    // figure for today", not as zero.
+    public BigDecimal getTodayKwh() {
+        PlantDataDto data = getLiveStatus();
+        if (data == null || data.today_energy == null || data.today_energy.isBlank()) {
+            return null;
+        }
+        try {
+            return new BigDecimal(data.today_energy.trim());
+        } catch (NumberFormatException e) {
+            logger.warn("Growatt returned a non-numeric today_energy value: {}", data.today_energy);
+            return null;
+        }
+    }
+
     public static class PlantLoadResult {
         private String plantId;
         private String plantName;
