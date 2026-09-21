@@ -121,6 +121,8 @@ public class GrowattApiService {
             params.add("perpage", String.valueOf(MIX_DATA_PER_PAGE));
             params.add("page", String.valueOf(page));
 
+            logger.info("Fetching mix data for page " + page + " params: " + params);
+
             GrowattResult<MixDataResponse> result = post(url, params, MixDataResponse.class);
             MixDataResponse response = result.body;
             if (response == null || response.data == null || response.data.datas == null) {

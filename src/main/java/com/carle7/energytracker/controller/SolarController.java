@@ -159,7 +159,7 @@ public class SolarController {
     public SolarLiveResponse getSolarLive() {
         logger.info("Fetching solar live data");
 
-        GrowattApiService.MixDataResult result = growattService.getLivePowerCurve(LocalDate.now());
+        GrowattApiService.MixDataResult result = growattService.getLivePowerCurve(growattService.today());
         List<MixDataPointDto> data = result.points;
         // Time is "yyyy-MM-dd HH:mm:ss", fixed-width - see getSolarHourly's own comment on why
         // plain string comparison both sorts and finds-the-max correctly here.
@@ -219,11 +219,11 @@ public class SolarController {
     }
 
     private LocalDate effectiveFromDate(LocalDate fromDate) {
-        return fromDate != null ? fromDate : LocalDate.now().withDayOfMonth(1);
+        return fromDate != null ? fromDate : growattService.today().withDayOfMonth(1);
     }
 
     private LocalDate effectiveToDate(LocalDate toDate) {
-        return toDate != null ? toDate : LocalDate.now().plusDays(1);
+        return toDate != null ? toDate : growattService.today().plusDays(1);
     }
 
     private SolarTotals emptyTotals() {

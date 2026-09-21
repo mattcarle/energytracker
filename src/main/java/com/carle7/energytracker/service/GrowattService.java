@@ -1,5 +1,6 @@
 package com.carle7.energytracker.service;
 
+import com.carle7.energytracker.config.GrowattConfig;
 import com.carle7.energytracker.model.GrowattCredentials;
 import com.carle7.energytracker.model.SolarGeneration;
 import com.carle7.energytracker.repository.SolarDateRangeProjection;
@@ -25,6 +26,9 @@ import static java.util.Optional.ofNullable;
 public class GrowattService {
 
     private static final Logger logger = LoggerFactory.getLogger(GrowattService.class);
+
+    @Autowired
+    private GrowattConfig growattConfig;
 
     @Autowired
     private GrowattApiService growattApiService;
@@ -122,7 +126,7 @@ public class GrowattService {
             // 02:00 scheduled run in particular would otherwise request a same-day range that
             // Growatt has no data for at all (it's the middle of the night). Today's total gets
             // picked up once it becomes "yesterday" on the next run.
-            LocalDate periodTo = LocalDate.now().minusDays(1);
+            LocalDate periodTo = today().minusDays(1);
             if (periodFrom.isAfter(periodTo)) {
                 result.setDayCount(0);
                 return result;
@@ -168,6 +172,14 @@ public class GrowattService {
             result.setError(e.getMessage());
         }
         return result;
+    }
+
+    // "Today" in Growatt's own time zone (growatt.api.time-zone, default Europe/London), not the
+    // JVM default (forced to UTC - see EnergyTrackerApplication). Every "today"/"yesterday" that
+    // feeds a Growatt call or a Growatt-dated query must come from here rather than
+    // LocalDate.now(), or the date is a day behind between local midnight and 01:00 during BST.
+    public LocalDate today() {
+        return LocalDate.now(growattConfig.getTimeZone());
     }
 
     // Device-level (not plant-level) - see fetchMixData's comment for why: the plant-level power
