@@ -54,26 +54,40 @@ public class DataLoadScheduler {
         }
     }
 
-    // Octopus publishes each day's readings, and any tariff/agreement changes, overnight - 02:00
-    // UK time gives them time to land before we pull the latest agreements and usage.
-    @Scheduled(cron = "0 0 2 * * *", zone = "Europe/London")
-    public void loadLatestDataDaily() {
+    // Octopus's usage readings land with a lag of a day or more, at no fixed time, so they're
+    // checked for hourly rather than once a night. Cheap to repeat: each run re-fetches from the
+    // start of the previous day per meter (a call or two each) and does nothing when there's
+    // nothing new. Runs at 15 past so it never coincides with the 02:00 jobs below, which would
+    // otherwise all start together.
+    @Scheduled(cron = "0 15 * * * *", zone = "Europe/London")
+    public void loadLatestUsageHourly() {
         if (!octopusCredentialsService.hasCredentials()) {
             return;
         }
-        logger.info("Running scheduled daily data load");
+        logger.info("Running scheduled hourly usage load");
+        OctopusService.UsageLoadResult usageResult = octopusService.loadUsageData(false);
+        if (usageResult.getError() != null) {
+            logger.error("Scheduled usage load failed: {}", usageResult.getError());
+        } else {
+            logger.info("Scheduled hourly usage load complete: {} usage record(s) loaded", usageResult.getUsageCount());
+        }
+    }
 
+    // Agreements, standing charges and unit rates change rarely and are published overnight - 02:00
+    // UK time gives any tariff change time to land. Deliberately not run hourly with the usage
+    // above: it re-pulls the account and around 90 days of unit rates each time, far more API
+    // traffic (and database churn) than a usage refresh, for data that only changes once a day.
+    @Scheduled(cron = "0 0 2 * * *", zone = "Europe/London")
+    public void loadLatestAccountDataDaily() {
+        if (!octopusCredentialsService.hasCredentials()) {
+            return;
+        }
+        logger.info("Running scheduled daily account data load");
         OctopusService.AccountLoadResult accountResult = octopusService.loadAccountData(false);
         if (accountResult.getError() != null) {
             logger.error("Scheduled agreement load failed: {}", accountResult.getError());
         }
-
-        OctopusService.UsageLoadResult usageResult = octopusService.loadUsageData(false);
-        if (usageResult.getError() != null) {
-            logger.error("Scheduled usage load failed: {}", usageResult.getError());
-        }
-
-        logger.info("Scheduled daily data load complete");
+        logger.info("Scheduled daily account data load complete");
     }
 
     // Same startup-catchup role as loadLatestUsageOnStartup, but gated by Growatt's own
@@ -98,9 +112,10 @@ public class DataLoadScheduler {
     }
 
     // Solar totals for "today" only firm up once the inverter has finished reporting for the
-    // day - runs alongside the existing 02:00 Octopus job so one nightly window covers both,
-    // but kept as its own method (not merged into loadLatestDataDaily) since it has an
-    // independent credentials gate that shouldn't couple to Octopus's.
+    // day - stays once a day, at 02:00 alongside the Octopus account-data job so one nightly
+    // window covers both, but kept as its own method (not merged into
+    // loadLatestAccountDataDaily) since it has an independent credentials gate that shouldn't
+    // couple to Octopus's.
     @Scheduled(cron = "0 0 2 * * *", zone = "Europe/London")
     public void loadLatestSolarDataDaily() {
         if (!growattCredentialsService.hasCredentials()) {
