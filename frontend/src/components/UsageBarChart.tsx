@@ -144,6 +144,22 @@ function stdChgKey(mpan: string): string {
   return `${mpan}_stdChg`
 }
 
+function happyHourKey(mpan: string): string {
+  return `${mpan}_happyHour`
+}
+
+// Happy hour is a third bucket beside off-peak/peak for electricity import only - the same scope
+// as the insights' Happy Hour cards; export earns rather than costs, and gas has no happy hours.
+function canHaveHappyHour(mp: MeterPoint): boolean {
+  return mp.meterType !== 'GAS' && !mp.isExport
+}
+
+// Subtracting one bucket from a total can leave float noise like -1.4e-17, which stackOffset
+// "sign" would drop into the negative stack; snap those to a true zero.
+function snapTinyToZero(value: number): number {
+  return Math.abs(value) < 1e-9 ? 0 : value
+}
+
 // Standing charge deliberately has no equivalent - it's always known/charged regardless of
 // whether usage data landed for that period, so it's never hatched even when the usage segment
 // stacked alongside it is.
@@ -225,6 +241,14 @@ interface FineAverage {
   name: string
   color: string
   byLabel: Map<string, number>
+}
+
+// A period with no happy-hour usage would otherwise list "Happy hour : 0.00" in its tooltip - on
+// the Day page that's every bar outside the window - so those zero entries are dropped.
+function withoutZeroHappyHour(payload: readonly TooltipPayloadEntry[]): TooltipPayloadEntry[] {
+  return payload.filter(
+    (entry) => !(typeof entry.dataKey === 'string' && entry.dataKey.endsWith('_happyHour') && !Number(entry.value)),
+  )
 }
 
 // Appends the hovered bar's half-hour average for each 5-minute series to a tooltip's entries (a
@@ -326,13 +350,20 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
       if (metric === 'cost') {
         point[stdChgKey(mp.mpan)] = figures ? figures.stdChg : 0
       }
+      const total = figures ? (metric === 'kwh' ? figures.kwh : figures.usageCost) : 0
+      // Happy-hour usage is its own stack segment, so it comes out of what's left for peak (or
+      // for the single usage segment when there's no peak/off-peak split).
+      const happyHour =
+        canHaveHappyHour(mp) && figures ? (metric === 'kwh' ? figures.kwhHappyHour : figures.costHappyHour) : 0
+      if (canHaveHappyHour(mp)) {
+        point[happyHourKey(mp.mpan)] = happyHour
+      }
       if (hasSplit) {
-        const total = figures ? (metric === 'kwh' ? figures.kwh : figures.usageCost) : 0
         const offPeak = figures ? (metric === 'kwh' ? figures.kwhOffPeak : figures.costOffPeak) : 0
         point[offPeakKey(mp.mpan)] = offPeak
-        point[peakKey(mp.mpan)] = total - offPeak + exportEpsilon
+        point[peakKey(mp.mpan)] = snapTinyToZero(total - offPeak - happyHour) + exportEpsilon
       } else {
-        point[usageKey(mp.mpan)] = (figures ? (metric === 'kwh' ? figures.kwh : figures.usageCost) : 0) + exportEpsilon
+        point[usageKey(mp.mpan)] = snapTinyToZero(total - happyHour) + exportEpsilon
       }
     }
     return point
@@ -369,7 +400,10 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
         let neg = 0
         for (const mp of group) {
           const hasSplit = offPeakAvailableByMpan?.get(mp.mpan) ?? false
-          const valueKeys = hasSplit ? [offPeakKey(mp.mpan), peakKey(mp.mpan)] : [usageKey(mp.mpan)]
+          // happyHourKey has no value for MPANs that can't have one - skipped by the typeof check.
+          const valueKeys = hasSplit
+            ? [offPeakKey(mp.mpan), peakKey(mp.mpan), happyHourKey(mp.mpan)]
+            : [usageKey(mp.mpan), happyHourKey(mp.mpan)]
           const keys = metric === 'cost' ? [stdChgKey(mp.mpan), ...valueKeys] : valueKeys
           for (const key of keys) {
             const value = point[key]
@@ -472,6 +506,14 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
 
   const hasAnyMissing = data.some((point) => meterPoints.some((mp) => point[missingKey(mp.mpan)]))
 
+  // MPANs with any happy-hour usage in the range shown - only these get a happy-hour bar segment
+  // (and legend entry), so a page with no happy hours is unchanged.
+  const happyHourMpans = new Set(
+    meterPoints
+      .filter((mp) => data.some((point) => Number(point[happyHourKey(mp.mpan)]) > 0))
+      .map((mp) => mp.mpan),
+  )
+
   // Collapses consecutive happy-hour periods into contiguous [x1, x2] bands (by chartLabel, the
   // same category values the x-axis itself plots) rather than one ReferenceArea per period, so
   // an hour-long happy hour renders as a single band instead of two abutting ones.
@@ -560,19 +602,16 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
               the finger that triggered it, so it's dropped entirely on mobile rather than shown. */}
           {!isMobile && (
             <Tooltip
-              // With a 5-minute line, Recharts can't supply that series' tooltip entry (it sits
-              // on a separate axis with a different point count - see fineSeries), so the
-              // half-hour average for the hovered bar is appended to the default content by hand.
-              content={
-                hasFineSeries
-                  ? (props) => (
-                      <DefaultTooltipContent
-                        {...props}
-                        payload={withFineAverages(props.payload, props.label, fineAverages)}
-                      />
-                    )
-                  : undefined
-              }
+              // The default content, adjusted by hand: zero happy-hour entries are dropped, and
+              // with a 5-minute line (Recharts can't supply that series' entry - it sits on a
+              // separate axis with a different point count, see fineSeries) the hovered bar's
+              // half-hour average for it is appended.
+              content={(props) => (
+                <DefaultTooltipContent
+                  {...props}
+                  payload={withFineAverages(withoutZeroHappyHour(props.payload), props.label, fineAverages)}
+                />
+              )}
               formatter={(value, name) => {
                 if (solar && (name === solarSeriesName || name === SOLAR_AVG_SERIES_NAME)) {
                   return [formatSolarValue(Number(value), solar.unit), name]
@@ -676,6 +715,17 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
                       />
                     ))}
                   </Bar>
+                )}
+                {/* Last, so happy-hour usage stacks on top of peak/off-peak. Same key pattern as
+                    the bars above so it remounts with them and keeps its position. */}
+                {happyHourMpans.has(mp.mpan) && (
+                  <Bar
+                    key={`${mp.mpan}-happyhour-${metric}-${hasSplit}`}
+                    dataKey={happyHourKey(mp.mpan)}
+                    stackId={stackIdFor(mp)}
+                    fill="var(--chart-happy-hour)"
+                    name={`${label} – Happy hour`}
+                  />
                 )}
               </Fragment>
             )
@@ -794,12 +844,11 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
             Missing data
           </span>
         )}
-        {happyHourRanges.length > 0 && (
+        {/* One entry for both the bars' happy-hour segment and, on the Day page, the shaded band
+            behind them - they share the colour. */}
+        {(happyHourMpans.size > 0 || happyHourRanges.length > 0) && (
           <span className="usage-bar-chart__legend-entry">
-            <span
-              className="usage-bar-chart__legend-swatch"
-              style={{ background: 'var(--chart-happy-hour)', opacity: 0.5 }}
-            />
+            <span className="usage-bar-chart__legend-swatch" style={{ background: 'var(--chart-happy-hour)' }} />
             Happy Hour
           </span>
         )}
