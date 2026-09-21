@@ -14,6 +14,11 @@ export interface MpanFigures {
   // periods.
   kwhOffPeak: number
   costOffPeak: number
+  // kWh/cost that fell in a happy-hour window, summed like the above. A third bucket alongside
+  // off-peak and peak: never counted as off-peak, and taken out of "peak" (see the Peak Usage
+  // card) - a happy hour isn't part of the tariff's own peak/off-peak split.
+  kwhHappyHour: number
+  costHappyHour: number
   // Total half-hour intervals this figure is derived from, and how many of them are
   // data-integrity-check placeholders (zero consumption, standing in for a half-hour Octopus
   // never reported) rather than real readings - see intervalCount/missingIntervalCount on the
@@ -47,6 +52,8 @@ export function emptyFigures(): MpanFigures {
     total: 0,
     kwhOffPeak: 0,
     costOffPeak: 0,
+    kwhHappyHour: 0,
+    costHappyHour: 0,
     intervalCount: 0,
     missingIntervalCount: 0,
   }
@@ -66,6 +73,8 @@ export function addFigures(a: MpanFigures, b: MpanFigures): MpanFigures {
     avgRate: kwh !== 0 ? usageCost / kwh : null,
     kwhOffPeak,
     costOffPeak,
+    kwhHappyHour: a.kwhHappyHour + b.kwhHappyHour,
+    costHappyHour: a.costHappyHour + b.costHappyHour,
     intervalCount: a.intervalCount + b.intervalCount,
     missingIntervalCount: a.missingIntervalCount + b.missingIntervalCount,
   }
@@ -84,6 +93,8 @@ export function averageFigures(f: MpanFigures, count: number): MpanFigures {
     total: f.total / count,
     kwhOffPeak: f.kwhOffPeak / count,
     costOffPeak: f.costOffPeak / count,
+    kwhHappyHour: f.kwhHappyHour / count,
+    costHappyHour: f.costHappyHour / count,
     // Not divided - these are counts of underlying half-hour periods, not amounts, so the
     // AVG row's tooltip should still report the real totals behind it, not a fractional count.
     intervalCount: f.intervalCount,
@@ -93,8 +104,17 @@ export function averageFigures(f: MpanFigures, count: number): MpanFigures {
 
 // Off-peak % is derived from the summed kwh/kwhOffPeak at display time (like avgRate), not
 // stored directly, so it stays consistent whether reading a single period or an aggregated row.
+// The denominator is the full total, happy hour included: happy-hour usage is never counted as
+// off-peak (kwhOffPeak excludes it), so it only ever shows up here as usage that wasn't off-peak.
+// That keeps off-peak %, happy hour % (below) and the implied peak share three slices of the same
+// total.
 export function offPeakPct(f: MpanFigures): number | null {
   return f.kwh !== 0 ? (f.kwhOffPeak / f.kwh) * 100 : null
+}
+
+// Happy-hour share of the full total - the same denominator as offPeakPct.
+export function happyHourPct(f: MpanFigures): number | null {
+  return f.kwh !== 0 ? (f.kwhHappyHour / f.kwh) * 100 : null
 }
 
 export function meterPointLabel(meterPoint: MeterPoint): string {
@@ -247,6 +267,8 @@ export interface RawPeriodItem {
   avgRate: number | null
   kwhOffPeak: number | null
   costOffPeak: number | null
+  kwhHappyHour: number
+  costHappyHour: number
   intervalCount: number
   missingIntervalCount: number
 }
@@ -361,6 +383,8 @@ export function useUsagePeriodData(meterPoints: MeterPoint[] | null, config: Usa
               total: usageCost + stdChg,
               kwhOffPeak: item.kwhOffPeak !== null ? item.kwhOffPeak * sign : 0,
               costOffPeak: item.costOffPeak !== null ? item.costOffPeak * sign : 0,
+              kwhHappyHour: item.kwhHappyHour * sign,
+              costHappyHour: item.costHappyHour * sign,
               intervalCount: item.intervalCount,
               missingIntervalCount: item.missingIntervalCount,
             }
@@ -371,7 +395,7 @@ export function useUsagePeriodData(meterPoints: MeterPoint[] | null, config: Usa
           for (const [key, amount] of stdChgByKey) {
             const row = rowFor(key)
             if (row.byMpan[mpan]) continue
-            row.byMpan[mpan] = { kwh: 0, avgRate: null, usageCost: 0, stdChg: amount, total: amount, kwhOffPeak: 0, costOffPeak: 0, intervalCount: 0, missingIntervalCount: 0 }
+            row.byMpan[mpan] = { kwh: 0, avgRate: null, usageCost: 0, stdChg: amount, total: amount, kwhOffPeak: 0, costOffPeak: 0, kwhHappyHour: 0, costHappyHour: 0, intervalCount: 0, missingIntervalCount: 0 }
           }
 
           // Standing charges are typically known in advance, but usage data can lag behind

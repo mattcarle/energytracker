@@ -46,6 +46,8 @@ async function fetchMonthItems(mpan: string, fromDate: string, toDate: string): 
     avgRate: m.avgRate,
     kwhOffPeak: m.kwhOffPeak,
     costOffPeak: m.costOffPeak,
+    kwhHappyHour: m.kwhHappyHour,
+    costHappyHour: m.costHappyHour,
     intervalCount: m.intervalCount,
     missingIntervalCount: m.missingIntervalCount,
   }))

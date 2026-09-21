@@ -10,6 +10,9 @@ public interface UsageAggregateProjection {
     // Breakdown rows carry the raw pence-per-kWh rate (unit rate straight from Octopus), while
     // getCost()/getAvgRate() are already converted to pounds - match that conversion here too.
     BigDecimal HUNDRED = BigDecimal.valueOf(100);
+    // The synthetic rate type UsageRepositoryImpl.BREAKDOWN_TEMPLATE gives a half-hour that falls
+    // in a happy-hour window, in place of the tariff's own STANDARD/DAY/NIGHT type.
+    String HAPPY_HOUR = "HAPPY_HOUR";
 
     String getMpan();
 
@@ -58,9 +61,47 @@ public interface UsageAggregateProjection {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    private List<RateBreakdown> offPeakRows() {
+    // Usage that fell in a happy-hour window (see HappyHour) - a scheduled event to highlight, not
+    // part of the tariff's own peak/off-peak structure, so it's reported as its own bucket beside
+    // off-peak and peak rather than counted in either. Zero, not null, when there's none: unlike
+    // off-peak there's no "not applicable" case.
+    default BigDecimal getKwhHappyHour() {
+        return happyHourRows().stream()
+                .map(RateBreakdown::getKwh)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    // Same happy-hour slice as getKwhHappyHour(), but summing rate*kwh (converted to pounds like
+    // getCostOffPeak()) - lets callers split a period's cost into off-peak, peak and happy hour.
+    default BigDecimal getCostHappyHour() {
+        return happyHourRows().stream()
+                .map(row -> row.getRate().multiply(row.getKwh()).divide(HUNDRED))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private List<RateBreakdown> happyHourRows() {
         List<RateBreakdown> breakdown = getBreakdown();
-        if (breakdown == null || breakdown.size() < 2) {
+        if (breakdown == null) {
+            return List.of();
+        }
+        return breakdown.stream()
+                .filter(row -> HAPPY_HOUR.equals(row.getRateType()))
+                .collect(Collectors.toList());
+    }
+
+    private List<RateBreakdown> offPeakRows() {
+        // Happy-hour rows are left out of the split detection below as well as the result: a
+        // happy-hour rate is usually the cheapest of the day, so counting it would make a tariff
+        // with a single ordinary rate look like it has a peak/off-peak split (cheap happy-hour
+        // rate vs. the ordinary one) and report a spurious 0% off-peak.
+        List<RateBreakdown> fullBreakdown = getBreakdown();
+        if (fullBreakdown == null) {
+            return null;
+        }
+        List<RateBreakdown> breakdown = fullBreakdown.stream()
+                .filter(row -> !HAPPY_HOUR.equals(row.getRateType()))
+                .collect(Collectors.toList());
+        if (breakdown.size() < 2) {
             return null;
         }
 
@@ -70,14 +111,11 @@ public interface UsageAggregateProjection {
             return null;
         }
 
-        // DAY and HAPPY_HOUR rates always peak (a happy hour is a scheduled event to highlight,
-        // not an off-peak tariff period, even though its rate is usually the cheapest of the
-        // day), NIGHT rates always off-peak, otherwise treat any rate that is less than half the
-        // maximum rate as off-peak
+        // DAY rates always peak, NIGHT rates always off-peak, otherwise treat any rate that is
+        // less than half the maximum rate as off-peak
         return breakdown.stream()
                 .filter(row ->
                         !"DAY".equals(row.getRateType()) &&
-                        !"HAPPY_HOUR".equals(row.getRateType()) &&
                         ("NIGHT".equals(row.getRateType()) || row.getRate().multiply(TWO).compareTo(maxRate) < 0))
                 .collect(Collectors.toList());
     }

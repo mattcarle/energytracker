@@ -30,6 +30,8 @@ async function fetchDayItems(mpan: string, fromDate: string, toDate: string): Pr
     avgRate: d.avgRate,
     kwhOffPeak: d.kwhOffPeak,
     costOffPeak: d.costOffPeak,
+    kwhHappyHour: d.kwhHappyHour,
+    costHappyHour: d.costHappyHour,
     intervalCount: d.intervalCount,
     missingIntervalCount: d.missingIntervalCount,
   }))

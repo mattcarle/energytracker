@@ -12,6 +12,7 @@ import {
   formatKwh,
   formatPercent,
   formatRate,
+  happyHourPct,
   isKwhView,
   isNetView,
   meterPointLabel,
@@ -610,17 +611,32 @@ export default function UsagePeriodView({
                       : '–'
                   }
                 />
+                {/* Peak is whatever is neither off-peak nor happy hour - happy-hour usage has its
+                    own card below rather than being folded into peak. */}
                 <StatTile
                   label="Peak Usage"
                   value={
                     insightsData.importHasOffPeak
                       ? formatKwhCostLine(
-                          insightsData.importFigures.kwh - insightsData.importFigures.kwhOffPeak,
-                          insightsData.importFigures.usageCost - insightsData.importFigures.costOffPeak,
+                          insightsData.importFigures.kwh -
+                            insightsData.importFigures.kwhOffPeak -
+                            insightsData.importFigures.kwhHappyHour,
+                          insightsData.importFigures.usageCost -
+                            insightsData.importFigures.costOffPeak -
+                            insightsData.importFigures.costHappyHour,
                         )
                       : '–'
                   }
                 />
+                {insightsData.importFigures.kwhHappyHour !== 0 && (
+                  <StatTile
+                    label="Happy Hour Usage"
+                    value={formatKwhCostLine(
+                      insightsData.importFigures.kwhHappyHour,
+                      insightsData.importFigures.costHappyHour,
+                    )}
+                  />
+                )}
                 {insightsData.importFigures.stdChg !== 0 && (
                   <StatTile
                     label="Standing charge"
@@ -647,6 +663,9 @@ export default function UsagePeriodView({
                   label="Off-peak %"
                   value={insightsData.importHasOffPeak ? formatPercent(offPeakPct(insightsData.importFigures)) : '–'}
                 />
+                {insightsData.importFigures.kwhHappyHour !== 0 && (
+                  <StatTile label="Happy Hour %" value={formatPercent(happyHourPct(insightsData.importFigures))} />
+                )}
               </div>
             </div>
           )}

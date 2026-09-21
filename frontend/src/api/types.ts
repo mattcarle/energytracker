@@ -34,6 +34,8 @@ export interface UsageDayAggregate {
   avgRate: number | null
   kwhOffPeak: number | null
   costOffPeak: number | null
+  kwhHappyHour: number
+  costHappyHour: number
 }
 
 export interface UsageTotals {
@@ -61,6 +63,8 @@ export interface UsageHalfHourAggregate {
   avgRate: number | null
   kwhOffPeak: number | null
   costOffPeak: number | null
+  kwhHappyHour: number
+  costHappyHour: number
 }
 
 export interface UsageByHalfHourResponse {
@@ -80,6 +84,8 @@ export interface UsageWeekAggregate {
   avgRate: number | null
   kwhOffPeak: number | null
   costOffPeak: number | null
+  kwhHappyHour: number
+  costHappyHour: number
 }
 
 export interface UsageByWeekResponse {
@@ -99,6 +105,8 @@ export interface UsageMonthAggregate {
   avgRate: number | null
   kwhOffPeak: number | null
   costOffPeak: number | null
+  kwhHappyHour: number
+  costHappyHour: number
 }
 
 export interface UsageByMonthResponse {
@@ -118,6 +126,8 @@ export interface UsageYearAggregate {
   avgRate: number | null
   kwhOffPeak: number | null
   costOffPeak: number | null
+  kwhHappyHour: number
+  costHappyHour: number
 }
 
 export interface UsageByYearResponse {
