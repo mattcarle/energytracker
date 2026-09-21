@@ -505,6 +505,10 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
   // separate bar group, only the tick labels are skipped. Mobile gets a much lower cap since
   // the same label count that fits a desktop-width chart collides at phone width.
   const maxLabels = isMobile ? 6 : 15
+
+  // More than one stack id means bars sit side by side within a slot (electricity plus gas) - see
+  // the barGap comment on the ComposedChart below.
+  const squeezeBars = isMobile && new Set(meterPoints.map(stackIdFor)).size > 1
   const tickInterval = data.length > maxLabels ? Math.ceil(data.length / maxLabels) - 1 : 0
 
   // A hand-built legend rather than recharts' <Legend>: one entry per MPAN (two - peak and
@@ -560,7 +564,19 @@ export default function UsageBarChart({ rows, meterPoints, metric, offPeakAvaila
   return (
     <div className="usage-bar-chart">
       <ResponsiveContainer width="100%" height={360}>
-        <ComposedChart data={data} stackOffset="sign" margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
+        <ComposedChart
+          data={data}
+          stackOffset="sign"
+          margin={{ top: 8, right: 8, left: 0, bottom: 8 }}
+          // Gas is its own stack (see stackIdFor), so selecting it puts a second bar beside
+          // electricity in each slot, and Recharts separates side-by-side bars by a fixed 4px
+          // (barGap) plus 10% of the slot at each edge. On the Day page at phone width a slot is
+          // only ~6px, so those gaps left the bars under 1px wide - effectively no bars. Squeeze
+          // them out on mobile when there's more than one bar group; with a single group (and on
+          // desktop, where slots are wide enough) the defaults are fine.
+          barGap={squeezeBars ? 0 : undefined}
+          barCategoryGap={squeezeBars ? '5%' : undefined}
+        >
           <defs>
             {missingHatchPatterns(MPAN_COLORS, 'mpan')}
             {missingHatchPatterns(MPAN_OFFPEAK_COLORS, 'offpeak')}
