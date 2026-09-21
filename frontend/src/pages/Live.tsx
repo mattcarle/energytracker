@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getSolarLive } from '../api/client'
 import type { SolarLiveStatus } from '../api/types'
+import SolarTodayChart from '../components/SolarTodayChart'
 import { formatKwh, solarIsAvailable } from './usageShared'
 import './Live.css'
 
@@ -206,6 +207,11 @@ export default function Live() {
           </div>
 
           <BatterySocBar percent={status.batterySoc} />
+
+          <div className="live-page__chart">
+            <h2 className="live-page__chart-title">Solar today (kW)</h2>
+            <SolarTodayChart points={status.points} />
+          </div>
         </>
       )}
     </section>

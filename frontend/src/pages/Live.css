@@ -135,6 +135,22 @@
   transition: width 0.4s ease, background-color 0.4s ease;
 }
 
+.live-page__chart {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 10px;
+  background: var(--code-bg);
+  box-sizing: border-box;
+}
+
+.live-page__chart-title {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text);
+  margin: 0 0 8px 6px;
+}
+
 /* Same breakpoint as useIsMobile/UsagePage.css. Font sizes, padding and margins stay exactly as
    set above - the only change is one tile per row instead of the desktop grid, so each card
    keeps its full-size, easy-to-read appearance rather than shrinking to fit more per row. */

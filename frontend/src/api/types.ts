@@ -244,6 +244,9 @@ export interface SolarLiveStatus {
   // The device's own reported time for this reading ("yyyy-MM-dd HH:mm:ss"), not when the
   // request was made - lets the UI show how stale the snapshot is.
   time: string | null
+  // Every reading Growatt has reported so far today, oldest first (empty until the first one) -
+  // the same points the Day page's curve is built from, times in Growatt's own local time.
+  points: SolarPowerPoint[]
   // Set only on a genuine Growatt API failure (rate limiting, a bad token, an HTTP/parse error) -
   // null otherwise, including when Growatt simply has nothing to report yet (not an error).
   error: string | null

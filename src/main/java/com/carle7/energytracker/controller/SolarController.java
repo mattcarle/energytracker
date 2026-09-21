@@ -191,8 +191,15 @@ public class SolarController {
             // nothing to report yet (e.g. before today's first reading) - only a genuine
             // failure (credentials/device problem, HTTP/parse error, or Growatt's own
             // error_code) populates it. See GrowattApiService.MixDataResult.
-            return new SolarLiveResponse(null, null, null, null, null, null, null, result.error);
+            return new SolarLiveResponse(null, null, null, null, null, null, null, List.of(), result.error);
         }
+        // The whole day's curve rides along with the latest reading because this call has already
+        // fetched every one of today's points from Growatt to find it - the Live tab's chart
+        // reuses them rather than making a second identical mix_data request (see getSolarHourly).
+        List<PowerPoint> curve = data.stream()
+                .sorted(Comparator.comparing(dto -> dto.time))
+                .map(SolarController::toPowerPoint)
+                .toList();
         return new SolarLiveResponse(
                 toWatts(latest.ppv),
                 signedWatts(latest.pacToUserTotal, latest.pacToGridTotal),
@@ -201,6 +208,7 @@ public class SolarController {
                 latest.soc,
                 latest.epvtoday != null ? BigDecimal.valueOf(latest.epvtoday) : null,
                 latest.time,
+                curve,
                 null);
     }
 
@@ -485,12 +493,16 @@ public class SolarController {
         private final Integer batterySoc;
         private final BigDecimal solarTodayKwh;
         private final String time;
+        // Every reading Growatt has reported so far today, oldest first (empty when there are
+        // none yet) - the same shape getSolarHourly returns, for the Live tab's chart.
+        private final List<PowerPoint> points;
         // Set only on a genuine Growatt API failure (see GrowattApiService.MixDataResult) - null
         // otherwise, including when Growatt simply has nothing to report yet.
         private final String error;
 
         public SolarLiveResponse(BigDecimal solarWatts, BigDecimal gridWatts, BigDecimal loadWatts,
-                                  BigDecimal batteryWatts, Integer batterySoc, BigDecimal solarTodayKwh, String time, String error) {
+                                  BigDecimal batteryWatts, Integer batterySoc, BigDecimal solarTodayKwh, String time,
+                                  List<PowerPoint> points, String error) {
             this.solarWatts = solarWatts;
             this.gridWatts = gridWatts;
             this.loadWatts = loadWatts;
@@ -498,6 +510,7 @@ public class SolarController {
             this.batterySoc = batterySoc;
             this.solarTodayKwh = solarTodayKwh;
             this.time = time;
+            this.points = points;
             this.error = error;
         }
 
@@ -527,6 +540,10 @@ public class SolarController {
 
         public String getTime() {
             return time;
+        }
+
+        public List<PowerPoint> getPoints() {
+            return points;
         }
 
         public String getError() {
