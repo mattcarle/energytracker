@@ -412,6 +412,7 @@ public class OctopusService {
             LocalDateTime periodTo = LocalDateTime.now();
 
             int usageCount = 0;
+            int failedMeterPoints = 0;
             for (MeterPoint meterPoint : meterPointRepository.findAll()) {
                 LocalDateTime latest = latestByMpan.get(meterPoint.getMpan());
                 LocalDateTime periodFrom = latest != null
@@ -427,20 +428,36 @@ public class OctopusService {
                     continue;
                 }
 
+                // Every meter's readings are fetched BEFORE anything stored is touched, and the
+                // overlap below is only replaced once all of them are in hand. It used to be
+                // deleted up front, so a failed fetch (a network blip, an Octopus outage) left
+                // that whole window empty until some later run succeeded - and with the load
+                // running hourly that's far more chances to hit one. Now a failure leaves the
+                // stored usage exactly as it was and the next run simply tries again.
+                List<ConsumptionResponse> responses = new ArrayList<>();
+                boolean fetchedAll = true;
+                for (Meter meter : meterRepository.findByMeterPointId(meterPoint.getId())) {
+                    ConsumptionResponse response = octopusApiService.fetchConsumptionData(
+                            meterPoint.getMeterType(), meterPoint.getMpan(), meter.getSerialNumber(), periodFrom, periodTo);
+                    if (response == null) {
+                        logger.error("Failed to load usage data for mpan {} meter {}; keeping its stored usage as it is", meterPoint.getMpan(), meter.getSerialNumber());
+                        fetchedAll = false;
+                        break;
+                    }
+                    responses.add(response);
+                }
+                if (!fetchedAll) {
+                    failedMeterPoints++;
+                    continue;
+                }
+
                 // A no-op on a meter's first-ever backfill (latest == null), since nothing in
                 // [periodFrom, ...) exists yet to overlap.
                 if (latest != null) {
                     usageRepository.deleteByMpanAndIntervalFromGreaterThanEqual(meterPoint.getMpan(), periodFrom);
                 }
 
-                for (Meter meter : meterRepository.findByMeterPointId(meterPoint.getId())) {
-                    ConsumptionResponse response = octopusApiService.fetchConsumptionData(
-                            meterPoint.getMeterType(), meterPoint.getMpan(), meter.getSerialNumber(), periodFrom, periodTo);
-                    if (response == null) {
-                        logger.error("Failed to load usage data for mpan {} meter {}", meterPoint.getMpan(), meter.getSerialNumber());
-                        continue;
-                    }
-
+                for (ConsumptionResponse response : responses) {
                     if (response.results != null) {
                         List<Usage> usages = response.results.stream()
                                 .map(data -> new Usage(
@@ -457,6 +474,12 @@ public class OctopusService {
             }
             result.setUsageCount(usageCount);
             result.setUtcToLocalCount(this.populateUtcToLocalMapping());
+            // Reported, not just logged per meter, so a run where nothing could be fetched doesn't
+            // read as a successful load of zero records.
+            if (failedMeterPoints > 0) {
+                result.setError("Could not fetch usage for " + failedMeterPoints
+                        + " meter point(s); their stored usage was left as it was and will be retried");
+            }
         } catch (Exception e) {
             logger.error("Failed to load usage data: {}", e.getMessage(), e);
             result.setError(e.getMessage());
