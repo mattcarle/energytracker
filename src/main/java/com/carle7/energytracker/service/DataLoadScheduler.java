@@ -57,7 +57,7 @@ public class DataLoadScheduler {
     // Octopus's usage readings land with a lag of a day or more, at no fixed time, so they're
     // checked for hourly rather than once a night. Cheap to repeat: each run re-fetches from the
     // start of the previous day per meter (a call or two each) and does nothing when there's
-    // nothing new. Runs at 15 past so it never coincides with the 02:00 jobs below, which would
+    // nothing new. Runs at 15 past so it never coincides with the midnight and 02:00 jobs below, which would
     // otherwise all start together.
     @Scheduled(cron = "0 15 * * * *", zone = "Europe/London")
     public void loadLatestUsageHourly() {
@@ -111,12 +111,13 @@ public class DataLoadScheduler {
         }
     }
 
-    // Solar totals for "today" only firm up once the inverter has finished reporting for the
-    // day - stays once a day, at 02:00 alongside the Octopus account-data job so one nightly
-    // window covers both, but kept as its own method (not merged into
+    // Solar totals for a day only firm up once the inverter has finished reporting for it. Runs
+    // once a day at midnight, as the day ends: there's no generation overnight, so the finished
+    // day's total is settled, and loadSolarData only records days up to yesterday - which at
+    // 00:00 is exactly the day that just ended. Its own method (not merged into
     // loadLatestAccountDataDaily) since it has an independent credentials gate that shouldn't
     // couple to Octopus's.
-    @Scheduled(cron = "0 0 2 * * *", zone = "Europe/London")
+    @Scheduled(cron = "0 0 0 * * *", zone = "Europe/London")
     public void loadLatestSolarDataDaily() {
         if (!growattCredentialsService.hasCredentials()) {
             return;

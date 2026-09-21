@@ -86,8 +86,8 @@ serial number needs to be entered manually. The token itself can be set (or chan
 from **Admin → Manage Growatt Data**, which also has a "Load Solar Data Now" button for a
 manual refresh. Otherwise Octopus usage refreshes automatically every hour (at 15 past,
 Europe/London), Octopus account/tariff data once a day at 02:00, and Growatt solar once a day at
-02:00 (`app.startup-usage-load.enabled` / `app.startup-solar-load.enabled` control whether they
-also do an initial load on application startup — on by default in `prod`, off in `dev`).
+midnight (`app.startup-usage-load.enabled` / `app.startup-solar-load.enabled` control whether
+they also do an initial load on application startup — on by default in `prod`, off in `dev`).
 
 ### Frontend (`frontend/`)
 
